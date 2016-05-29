@@ -1,0 +1,4 @@
+[package]
+name = "polyminis-core"
+version = "0.1.0"
+authors = ["Ricardo Sisnett <sisnett@polyminis.com>"]
