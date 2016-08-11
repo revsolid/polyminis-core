@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Ricardo Sisnett <sisnett@polyminis.com>"]
 
 [dependencies]
-rust-monster = "0.1.0"
+rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git" }
+snowflake = "^1.2.0"
