@@ -1,91 +1,128 @@
-mod Functionalus
+use rust_monster::ga::ga_core::*;
+use rust_monster::ga::ga_population::*;
+use rust_monster::ga::ga_simple::*;
+
+use ::morphology::*;
+
+pub struct SensoryPayload{}
+pub struct ActionList {}
+
+
+pub struct Species
 {
-    use rust_monster::ga::ga_core::*;
-    use std::any::Any;
-    struct PolyminiGenome;
-
-    trait Controller
-    {
-        fn register_sensor(&self);
-        fn register_actuator(&self);
-        fn sense(&self);
-        fn think(&self);
-        fn act(&self);
-    }
-
-    trait PhysicsManager
-    {
-        fn register_object(&self);
-    }
-
-    trait MorphologyManager
-    {
-        fn init_from_genome(&self, _:&PolyminiGenome);
-        //init_from_genome(.., .., MorphologyOptions);
-    }
-
-    struct Polymini<'a>
-    {
-        morph_mgr: &'a mut MorphologyManager,
-        phy_mgr: &'a mut PhysicsManager,
-        controller: &'a mut Controller,
-    }
-
-    impl<'a> Polymini<'a>
-    {
-        fn new(mm: &'a mut MorphologyManager,
-               pm: &'a mut PhysicsManager,
-               ctr: &'a mut Controller) -> Polymini<'a>
-        {
-            Polymini { morph_mgr: mm,
-                       phy_mgr: pm,
-                       controller: ctr }
-        }
-    }
-
-    /*
-    impl<'a> GAIndividual for Polymini<'a>
-    {
-        fn evaluate(&mut self) -> f32 { 0.0 }
-        fn crossover(&self, _: &Polymini<'a>) -> Box<Polymini<'a>>
-        { 
-            Box::new(Polymini::)
-        }
-        fn mutate(&mut self, _: f32) {}
-        fn fitness(&self) -> f32 { 0.0 }
-        fn set_fitness(&mut self, _:f32) { }
-        fn raw(&self) -> f32 { 0.0 }
-    }
-    */
+    // Translation Table
+    genetic_algorithm: SimpleGeneticAlgorithm<Polymini>, 
 }
 
-mod Simulation
+
+struct Splice {} 
+struct Trait {}
+
+pub struct Sensor
 {
-    enum Phases
+}
+pub struct Actuator
+{
+}
+pub struct Control
+{
+    // SensorList
+    // ActuatorList
+    // NN
+}
+impl Control
+{
+    pub fn sense(&self, _: &SensoryPayload)
     {
-        // Sense
-        // Think
-        // Act
-        // Consequence (?)
-        // Env
+        // Feed SensoryPayload into sensors
+        // Copy values from sensors to input layer of NN
+    }
+    pub fn think(&self)
+    {
+        // Feedforward NN
+        // Copy values from output layer into Actuators
+    }
+    pub fn act(&self, _: &mut ActionList)
+    {
+        // Get actions from Actuators
+        // Copy actions into ActionList
+    }
+}
+
+pub struct Physics {}
+
+pub struct Statistics
+{
+    hp: i32,
+    energy: i32,
+}
+
+pub struct Polymini
+{
+    morph: Morphology,
+    control: Control,
+    physics: Physics,
+    statistics: Statistics,
+
+    fitness: f32
+}
+impl Polymini
+{
+    pub fn new(f:f32) -> Polymini
+    {
+        Polymini { control: Control {},
+                   morph: Morphology::new(),
+                   physics: Physics {},
+                   statistics: Statistics { hp: 0, energy: 0 },
+                   fitness: f}
+    }
+    pub fn sense_phase(&mut self, sp: &SensoryPayload)
+    {
+        self.control.sense(sp);
+    }
+    pub fn think_phase(&mut self)
+    {
+        self.control.think();
+    }
+    pub fn act_phase(&mut self, al: &mut ActionList)
+    {
+        self.control.act(al);
+    }
+}
+impl GAIndividual for Polymini
+{ 
+    fn crossover(&self, _: &Polymini) -> Box<Polymini>
+    {
+        Box::new(Polymini::new(0.0))
+    }
+    fn mutate(&mut self, _:f32)
+    {
+        // Structural mutation should happen first
+        //   morphology.mutate
+        // Brain Mutation is self contained
+        //   control.mutate
+        // restart self (?)
     }
 
-    struct PolyminiSpecies
+    fn evaluate(&mut self) -> f32
     {
-        /*
-         * population: GAPopulation<Polymini>
-         * genetic_algorithm: SimpleGA<Polymini>
-         */
+        self.fitness 
     }
+    fn fitness(&self) -> f32
+    {
+        self.fitness
+    }
+    fn set_fitness(&mut self, f: f32)
+    {
+        self.fitness = f
+    }
+    fn raw(&self) -> f32
+    {
+        0.0
+    }
+}
 
-    struct PolyminiSimulation
-    {
-        species: Vec<PolyminiSpecies>,
-    }
-
-    impl PolyminiSimulation
-    {
-        fn setup(&self){}
-        fn step(&self){}
-    }
+pub struct PolyminiGeneration<'a>
+{
+    pub individuals: &'a mut GAPopulation<Polymini>
 }
