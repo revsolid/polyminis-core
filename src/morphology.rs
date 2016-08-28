@@ -319,6 +319,5 @@ mod test
                 println!("{:?}", c)
             }
         }
-        assert_eq!(0,1);
     }
 }
