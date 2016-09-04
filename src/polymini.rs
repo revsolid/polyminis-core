@@ -1,53 +1,26 @@
 use rust_monster::ga::ga_core::*;
 use rust_monster::ga::ga_population::*;
 use rust_monster::ga::ga_simple::*;
+use rust_monster::ga::ga_random::*;
 
+use std::any::Any;
+
+use ::control::*;
+use ::genetics::*;
 use ::morphology::*;
 
-pub struct SensoryPayload{}
-pub struct ActionList {}
 
 
-pub struct Species
+pub struct Species<'a>
 {
     // Translation Table
-    genetic_algorithm: SimpleGeneticAlgorithm<Polymini>, 
+    genetic_algorithm: SimpleGeneticAlgorithm<'a, Polymini>,
 }
 
 
 struct Splice {} 
 struct Trait {}
 
-pub struct Sensor
-{
-}
-pub struct Actuator
-{
-}
-pub struct Control
-{
-    // SensorList
-    // ActuatorList
-    // NN
-}
-impl Control
-{
-    pub fn sense(&self, _: &SensoryPayload)
-    {
-        // Feed SensoryPayload into sensors
-        // Copy values from sensors to input layer of NN
-    }
-    pub fn think(&self)
-    {
-        // Feedforward NN
-        // Copy values from output layer into Actuators
-    }
-    pub fn act(&self, _: &mut ActionList)
-    {
-        // Get actions from Actuators
-        // Copy actions into ActionList
-    }
-}
 
 pub struct Physics {}
 
@@ -68,13 +41,13 @@ pub struct Polymini
 }
 impl Polymini
 {
-    pub fn new(f:f32) -> Polymini
+    pub fn new(morphology: Morphology, control: Control) -> Polymini
     {
-        Polymini { control: Control {},
-                   morph: Morphology::new(),
+        Polymini { morph: morphology,
+                   control: control,
                    physics: Physics {},
                    statistics: Statistics { hp: 0, energy: 0 },
-                   fitness: f}
+                   fitness: 0.0 }
     }
     pub fn sense_phase(&mut self, sp: &SensoryPayload)
     {
@@ -91,11 +64,14 @@ impl Polymini
 }
 impl GAIndividual for Polymini
 { 
-    fn crossover(&self, _: &Polymini) -> Box<Polymini>
+    fn crossover(&self, other: &Polymini, random_ctx: &mut GARandomCtx) -> Box<Polymini>
     {
-        Box::new(Polymini::new(0.0))
+        let new_morphology = self.morph.crossover(&other.morph, random_ctx);
+        let new_control = self.control.crossover(&other.control, random_ctx);
+
+        Box::new(Polymini::new(new_morphology, new_control))
     }
-    fn mutate(&mut self, _:f32)
+    fn mutate(&mut self, _:f32, _: &mut GARandomCtx)
     {
         // Structural mutation should happen first
         //   morphology.mutate
@@ -103,10 +79,9 @@ impl GAIndividual for Polymini
         //   control.mutate
         // restart self (?)
     }
-
-    fn evaluate(&mut self) -> f32
+    fn evaluate(&mut self, _: &mut Any)
     {
-        self.fitness 
+        self.fitness;
     }
     fn fitness(&self) -> f32
     {
@@ -114,11 +89,16 @@ impl GAIndividual for Polymini
     }
     fn set_fitness(&mut self, f: f32)
     {
-        self.fitness = f
+        self.fitness = f;
     }
     fn raw(&self) -> f32
     {
-        0.0
+        self.fitness
+    }
+
+    fn set_raw(&mut self, r: f32)
+    {
+        self.fitness = r;
     }
 }
 
