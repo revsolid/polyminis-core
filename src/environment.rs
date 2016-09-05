@@ -1,25 +1,18 @@
 use ::control::*;
+use ::genetics::*;
+use ::physics::*;
 use ::polymini::*;
 
+use rust_monster::ga::ga_population::*;
 
 struct Environment
 {
     simulation: Simulation,
 }
 
-struct World
-{
-    // Physics Manager
-}
-impl World
-{
-    pub fn apply(&self, _: &ActionList)
-    {}
-}
-
 struct Simulation
 {
-    world: World,
+    physical_world: PhysicsWorld,
 }
 impl Simulation
 {
@@ -29,7 +22,7 @@ impl Simulation
         self.sense_phase(generation);
         self.think_phase(generation);
         self.act_phase(generation);
-        self.environment_update(generation);
+        self.consequence(generation);
     }
     fn environment_setup(&self, _: &mut PolyminiGeneration)
     {
@@ -37,11 +30,19 @@ impl Simulation
     }
     fn sense_phase(&self, generation: &mut PolyminiGeneration)
     {
-        for polymini in &mut generation.individuals.population().iter_mut()
+
+        for i in 0..generation.individuals.size()
         {
-            let sp = self.sense_for(&polymini);
-            polymini.sense_phase(&sp);
-        } 
+            let sensed;
+            // TODO: Some better abstraction over rust-monster stuff would be great
+            {
+                let polymini = generation.individuals.individual(i, GAPopulationSortBasis::Raw);
+                sensed = self.sense_for(&polymini.get_perspective());
+            }
+
+            //TODO: inviduals.individual_mut is needed
+            //let mut k: &mut Polymini = &mut generation.individuals.individual(i, GAPopulationSortBasis::Raw);
+        }
     }
     fn think_phase(&self, generation: &mut PolyminiGeneration)
     {
@@ -56,18 +57,27 @@ impl Simulation
         {
             let mut al = self.actions_for(&polymini);
             polymini.act_phase(&mut al);
-            self.world.apply(&al);
         } 
     }
-    fn environment_update(&self, _: &mut PolyminiGeneration)
+    fn consequence(&mut self, _: &mut PolyminiGeneration)
     {
         // Update environment based on the aftermath of the simulation
+
+        /* Physics */
+        self.physical_world.step();
+        /* Loop through the generation and update their physics situation */ 
+        // After physics, internal polymini state will be updated
+
+        // Combat
+        
+        // Energy consumption
     }
 
-    //
-    fn sense_for(&self, _: &Polymini) -> SensoryPayload
+    fn sense_for(&self, _: &Perspective) -> SensoryPayload
     {
-        SensoryPayload {}
+        // Go through the environment and Polyminis filling up
+        // the sensory payload
+        SensoryPayload::new()
     }
 
     fn actions_for(&self, _: &Polymini) -> ActionList

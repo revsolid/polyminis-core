@@ -1,15 +1,27 @@
-use rust_monster::ga::ga_random::*;
+use std::collections::HashMap;
 
-use ::genetics::Genetics;
+use ::genetics::*;
 
-pub struct SensoryPayload{}
 pub struct ActionList {}
-pub struct Sensor
+
+pub struct Perspective
 {
+    id: usize,
+    pos: (f32, f32),
+// list of sensor types
 }
-pub struct Actuator
+impl Perspective
 {
+    pub fn new(id: usize, pos: (f32, f32)) -> Perspective
+    {
+        Perspective { id: id, pos: pos }
+    }
 }
+
+type SensorTag = i32;
+type ActuatorTag = i32;
+pub type SensoryPayload = HashMap<SensorTag, f32>;
+
 pub struct Control
 {
     // SensorList
@@ -41,11 +53,11 @@ impl Control
 }
 impl Genetics for Control
 {
-    fn crossover(&self, _: &Control, _: &mut GARandomCtx) -> Control
+    fn crossover(&self, _: &Control, _: &mut PolyminiRandomCtx) -> Control
     {
         Control::new()
     }
 
-    fn mutate(&self, _: &mut GARandomCtx){}
+    fn mutate(&self, _: &mut PolyminiRandomCtx){}
 }
 

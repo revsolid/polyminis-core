@@ -2,9 +2,7 @@ use std::collections::{HashSet, HashMap};
 use std::cmp::{min, max};
 use std::fmt;
 
-use rust_monster::ga::ga_random::*;
-
-use ::genetics::Genetics;
+use ::genetics::*;
 
 //
 //
@@ -61,20 +59,98 @@ impl AdjacencyInfo
 pub struct Cell 
 {
     adjacency_info : AdjacencyInfo,
-    tiered_gene: TieredGene
+    pm_trait: Trait
 }
 impl Cell
 {
-    fn new(adjacency_info: AdjacencyInfo, tiered_gene: TieredGene) -> Cell
+    fn new(adjacency_info: AdjacencyInfo, pm_trait: Trait) -> Cell
     {
-        Cell { adjacency_info: adjacency_info, tiered_gene: tiered_gene }
+        Cell { adjacency_info: adjacency_info, pm_trait: pm_trait }
     }
 }
 impl fmt::Debug for Cell
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "X")
+        write!(f, "{:02X}", self.pm_trait.trait_number)
+    }
+}
+
+//
+//
+const TIER_ONE_CHAIN:   u8 = 0xFF;
+const TIER_TWO_CHAIN:   u8 = 0x0F;
+const TIER_THREE_CHAIN: u8 = 0x0F;
+pub struct Trait
+{
+    tier: u8,
+    trait_number: u8
+}
+impl Trait
+{
+    fn new(gene_payload: u16) -> Trait
+    {
+        //TODO: Make this configurable
+        //TIER I
+        let mut tier: u8 = 1;
+        let mut trait_num = ( ( gene_payload & (0xFF<<8) ) >> 8 ) as u8;
+        if trait_num == TIER_ONE_CHAIN
+        {
+            tier += 1;
+            //TIER II
+            trait_num = ((gene_payload & (0xF<<4)) >> 4) as u8;
+            if trait_num == TIER_TWO_CHAIN
+            {
+                //TIER III
+                tier += 1;
+                trait_num = (gene_payload & 0xF) as u8;
+            }
+        }
+
+        Trait
+        {
+            tier: tier,
+            trait_number: trait_num
+        }
+    }
+}
+
+
+//
+//
+trait PolyminiCellFactory
+{
+    fn create_for_chromosome(c: Chromosome) -> Cell;
+}
+
+struct BasicPolyminiCellFactory;
+impl PolyminiCellFactory for BasicPolyminiCellFactory
+{
+    fn create_for_chromosome(chromosome: Chromosome) -> Cell
+    {
+
+        //TODO: Control / Metadata Payload
+        let _ = 0xFF & chromosome[0];
+        let ap = 0xFF & chromosome[1];
+        let gp1 = ((0xFF & chromosome[2]) as u16) << 8;
+        let gp  = gp1 + (0xFF & chromosome[3]) as u16;
+
+        let dirs = vec![Directions::UP, Directions::DOWN, Directions::LEFT, Directions::RIGHT];
+        let mut adj_dirs = vec![];
+
+        for i in 0..4
+        {
+            if 1<<i & ap != 0 
+            {
+                adj_dirs.push(dirs[i]);
+            }
+        }
+
+        let ai = AdjacencyInfo { adj: adj_dirs };
+         
+        let tg = Trait::new(gp); 
+
+        Cell::new(ai, tg)
     }
 }
 
@@ -152,7 +228,7 @@ impl fmt::Debug for Representation
             let w = dim[p%2];
             let h = dim[(p+1)%2];
 
-            result = write!(f, "\n");
+            let _ = write!(f, "\n");
             for i in 0..h 
             {
                 for j in 0..w 
@@ -164,10 +240,10 @@ impl fmt::Debug for Representation
                     match self.positions[p].get(&trans_coord)
                     {
                         Some(x) => {
-                            result = write!(f, "{:?}", self.cells[*x]);
+                            let _ = write!(f, "{:?}", self.cells[*x]);
                         },
                         None => {
-                            result = write!(f, ".");
+                            let _ = write!(f, "..");
                         }
                     }
                 }
@@ -177,85 +253,6 @@ impl fmt::Debug for Representation
         result
     }
 }
-
-
-//
-//
-const TIER_ONE_CHAIN: u16 = 0xFF;
-const TIER_TWO_CHAIN: u16  = 0x0F;
-const TIER_THREE_CHAIN: u16 = 0x0F;
-pub struct TieredGene
-{
-    tier: u8,
-    trait_number: u16
-}
-impl TieredGene
-{
-    fn new(gene_payload: u16) -> TieredGene
-    {
-        //TODO: Make this configurable
-        //TIER I
-        let mut tier: u8 = 1;
-        let mut trait_num = gene_payload & (0xFF<<8) as u16;
-        if trait_num == TIER_ONE_CHAIN
-        {
-            tier += 1;
-            //TIER II
-            trait_num = (gene_payload & (0xF<<4)) as u16;
-            if trait_num == TIER_TWO_CHAIN
-            {
-                //TIER III
-                trait_num = (gene_payload & 0xF) as u16;
-            }
-        }
-
-        TieredGene
-        {
-            tier: tier,
-            trait_number: trait_num
-        }
-    }
-}
-
-
-//
-//
-trait PolyminiCellFactory
-{
-    fn create_for_chromosome(c: Chromosome) -> Cell;
-}
-
-struct BasicPolyminiCellFactory;
-impl PolyminiCellFactory for BasicPolyminiCellFactory
-{
-    fn create_for_chromosome(chromosome: Chromosome) -> Cell
-    {
-
-        //TODO: Control / Metadata Payload
-        let _ = 0xFF & chromosome[0];
-        let ap = 0xFF & chromosome[1];
-        let gp1 = ((0xFF & chromosome[2]) as u16) << 8;
-        let gp  = gp1 + (0xFF & chromosome[3]) as u16;
-
-        let dirs = vec![Directions::UP, Directions::DOWN, Directions::LEFT, Directions::RIGHT];
-        let mut adj_dirs = vec![];
-
-        for i in 0..4
-        {
-            if 1<<i & ap != 0 
-            {
-                adj_dirs.push(dirs[i]);
-            }
-        }
-
-        let ai = AdjacencyInfo { adj: adj_dirs };
-         
-        let tg = TieredGene::new(gp); 
-
-        Cell::new(ai, tg)
-    }
-}
-
 
 //
 //
@@ -347,7 +344,7 @@ impl Morphology
 }
 impl Genetics for Morphology
 {
-    fn crossover(&self, other: &Morphology, random_ctx: &mut GARandomCtx) -> Morphology
+    fn crossover(&self, other: &Morphology, random_ctx: &mut PolyminiRandomCtx) -> Morphology
     {
         let mut chromosomes = vec![];
 
@@ -373,11 +370,11 @@ impl Genetics for Morphology
             link_chromosome[lc] = self.original_chromosome[cross_point_chromosome][lc];
         }
 
-        let mut link_byte = 0;
+        let link_byte;
 
         // make the mask u16 to allow space for overflowing
         let mut mask : u16 = ( 1 << (cross_point_bit+1)) - 1;
-        mask = (mask << (8 - cross_point_bit));
+        mask = mask << (8 - cross_point_bit);
 
         let mask_2 : u16 = (1 << ((8 - cross_point_bit))) - 1;
 
@@ -389,9 +386,8 @@ impl Genetics for Morphology
         }
 
         println!("{:X} {:X}", mask as u8, mask_2 as u8);
-        link_byte = (mask as u8)   & (self.original_chromosome[cross_point_chromosome][cross_point_allele]) +
-                    (mask_2 as u8) & (other.original_chromosome[cross_point_chromosome_2]
-                                                               [cross_point_allele]);
+        link_byte = ((mask as u8) & (self.original_chromosome[cross_point_chromosome][cross_point_allele])) +
+                    ((mask_2 as u8) & (other.original_chromosome[cross_point_chromosome_2][cross_point_allele]));
         link_chromosome[cross_point_allele] = link_byte;
         chromosomes.push(link_chromosome);
 
@@ -411,7 +407,7 @@ impl Genetics for Morphology
         Morphology::new(chromosomes)
     }
 
-    fn mutate(&self, _: &mut GARandomCtx){}
+    fn mutate(&self, _: &mut PolyminiRandomCtx){}
 }
 
 //
@@ -419,7 +415,6 @@ impl Genetics for Morphology
 #[cfg(test)]
 mod test
 {
-    use rust_monster::ga::ga_random::*;
     use ::morphology::*;
     use ::genetics::*;
     #[test]
@@ -496,8 +491,29 @@ mod test
         let morph = Morphology::new(c1);
         let morph_2 = Morphology::new(c2);
 
-        let child = morph.crossover(&morph_2, &mut GARandomCtx::from_seed([5,7,5,9], "".to_string())); 
+        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
 
         println!("{:?}", child);
     }
+
+    #[test]
+    fn test_morphology_crossover_2()
+    {
+        let c1 = vec![[0, 0x09, 0x6A, 0xAD],
+                      [0, 0x0B, 0xFF, 0xFF],
+                      [0,    0, 0xFF, 0xFF],
+                      [0,    0, 0xFF, 0xFF]];
+        let c2 = vec![[0, 0x0C, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00]];
+
+        let morph = Morphology::new(c1);
+        let morph_2 = Morphology::new(c2);
+
+        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
+
+        println!("{:?}", child);
+    }
+
 }
