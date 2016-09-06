@@ -27,6 +27,11 @@ pub struct AdjacencyInfo
 }
 impl AdjacencyInfo
 {
+    fn new(adjacency_info: Vec<Directions>) -> AdjacencyInfo
+    {
+        AdjacencyInfo { adj: adjacency_info }
+    }
+
     fn get_neighbours(&self, coord: Coord) -> Vec<Coord>
     {
         let mut to_ret = vec![];
@@ -81,36 +86,28 @@ impl fmt::Debug for Cell
 const TIER_ONE_CHAIN:   u8 = 0xFF;
 const TIER_TWO_CHAIN:   u8 = 0x0F;
 const TIER_THREE_CHAIN: u8 = 0x0F;
+pub enum TraitType
+{
+    SimpleTrait,
+    SensorTrait,
+    ActuatorTrait,
+    Empty
+}
 pub struct Trait
 {
     tier: u8,
-    trait_number: u8
+    trait_number: u8,
+    trait_type: TraitType 
 }
 impl Trait
 {
-    fn new(gene_payload: u16) -> Trait
+    fn new(tier: u8, trait_num: u8, trait_type: TraitType) -> Trait
     {
-        //TODO: Make this configurable
-        //TIER I
-        let mut tier: u8 = 1;
-        let mut trait_num = ( ( gene_payload & (0xFF<<8) ) >> 8 ) as u8;
-        if trait_num == TIER_ONE_CHAIN
-        {
-            tier += 1;
-            //TIER II
-            trait_num = ((gene_payload & (0xF<<4)) >> 4) as u8;
-            if trait_num == TIER_TWO_CHAIN
-            {
-                //TIER III
-                tier += 1;
-                trait_num = (gene_payload & 0xF) as u8;
-            }
-        }
-
         Trait
         {
             tier: tier,
-            trait_number: trait_num
+            trait_number: trait_num,
+            trait_type: trait_type
         }
     }
 }
@@ -146,11 +143,25 @@ impl PolyminiCellFactory for BasicPolyminiCellFactory
             }
         }
 
-        let ai = AdjacencyInfo { adj: adj_dirs };
-         
-        let tg = Trait::new(gp); 
+        //TODO: Make this configurable
+        //TIER I
+        let mut tier: u8 = 1;
+        let mut trait_num = ( ( gp & (0xFF<<8) ) >> 8 ) as u8;
+        if trait_num == TIER_ONE_CHAIN
+        {
+            //TIER II
+            tier += 1;
+            trait_num = ((gp & (0xF<<4)) >> 4) as u8;
+            if trait_num == TIER_TWO_CHAIN
+            {
+                //TIER III
+                tier += 1;
+                trait_num = (gp & 0xF) as u8;
+            }
+        }
 
-        Cell::new(ai, tg)
+        Cell::new(AdjacencyInfo::new(adj_dirs),
+                  Trait::new(tier, trait_num, TraitType::Empty))
     }
 }
 

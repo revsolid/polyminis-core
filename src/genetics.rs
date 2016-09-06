@@ -1,22 +1,52 @@
-use rust_monster::ga::ga_random::*;
-use rust_monster::ga::ga_population::*;
+//
+// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE rust_monster
+extern crate rust_monster;
+use self::rust_monster::ga::ga_population::*;
+// Alias GAIndividual
+pub use self::rust_monster::ga::ga_core::GAIndividual as PolyminiGAIndividual;
+// Alias GARandomCtx
+pub use self::rust_monster::ga::ga_random::GARandomCtx as PolyminiRandomCtx;
+// Alias SimpleGA
+pub use self::rust_monster::ga::ga_simple::SimpleGeneticAlgorithm as PolyminiGA;
+//
+//
 
-use ::polymini::*;
+pub type PolyminiPopulationIter<'a, T> = GAPopulationRawIterator<'a, T>;
 
-pub type PolyminiRandomCtx = GARandomCtx;
-
-pub struct Splice {} 
 pub trait Genetics
 {
     fn crossover(&self, other: &Self, random_ctx: &mut PolyminiRandomCtx) -> Self;
     fn mutate(&self, random_ctx: &mut PolyminiRandomCtx);
 }
 
-pub struct PolyminiGeneration
+pub struct PolyminiGeneration<T: PolyminiGAIndividual>
 {
-    pub individuals: GAPopulation<Polymini>
+    individuals: GAPopulation<T>
 }
-impl PolyminiGeneration
+impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
 {
+    pub fn new(pop: Vec<T>) -> PolyminiGeneration<T>
+    {
+        PolyminiGeneration { individuals: GAPopulation::new(pop, 
+                                                            GAPopulationSortOrder::HighIsBest) }
+    }
+    pub fn get_individual(&self, i:usize) -> &T
+    {
+        self.individuals.individual(i, GAPopulationSortBasis::Raw)
+    }
 
+    pub fn get_individual_mut(&mut self, i:usize) -> &mut T
+    {
+        self.individuals.individual_mut(i, GAPopulationSortBasis::Raw)
+    }
+
+    pub fn size(&self) -> usize
+    {
+        self.individuals.size()
+    }
+
+    pub fn iter(&self) -> PolyminiPopulationIter<T>
+    {
+        self.individuals.raw_score_iterator()
+    }
 }
