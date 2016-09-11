@@ -2,6 +2,7 @@ use ::control::*;
 use ::genetics::*;
 use ::morphology::*;
 use ::physics::*;
+use ::uuid::*;
 
 use std::any::Any;
 
@@ -28,10 +29,12 @@ impl Polymini
 {
     pub fn new(morphology: Morphology, control: Control) -> Polymini
     {
-        Polymini { uuid: 0,
+        let uuid = PolyminiUUIDCtx::next();
+        let dim = morphology.get_dimensions();
+        Polymini { uuid: uuid,
                    morph: morphology,
                    control: control,
-                   physics: Physics::new(0, 0.0, 0.0, 0),
+                   physics: Physics::new(uuid, dim, 1.0, 0.0, 0),
                    statistics: Statistics { hp: 0, energy: 0 },
                    fitness: 0.0 }
     }
@@ -40,8 +43,7 @@ impl Polymini
         Perspective::new(self.uuid,
                          self.physics.get_pos(),
                          self.physics.get_orientation(),
-                         self.physics.get_move_succeded()
-                        )
+                         self.physics.get_move_succeded())
     }
     pub fn sense_phase(&mut self, sp: &SensoryPayload)
     {

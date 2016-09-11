@@ -27,8 +27,9 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
 {
     pub fn new(pop: Vec<T>) -> PolyminiGeneration<T>
     {
-        PolyminiGeneration { individuals: GAPopulation::new(pop, 
-                                                            GAPopulationSortOrder::HighIsBest) }
+        let mut ga_pop = GAPopulation::new(pop, GAPopulationSortOrder::HighIsBest);
+        ga_pop.sort();
+        PolyminiGeneration { individuals: ga_pop }
     }
     pub fn get_individual(&self, i:usize) -> &T
     {

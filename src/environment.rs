@@ -1,6 +1,7 @@
 use ::control::*;
 use ::physics::*;
 use ::species::*;
+use ::uuid::*;
 
 struct Environment
 {
@@ -18,6 +19,33 @@ impl Simulation
     {
         Simulation { physical_world: PhysicsWorld::new(), species: vec![] } 
     }
+
+    pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
+    {
+        self.physical_world.add_object(PolyminiUUIDCtx::next(),
+                                       position,
+                                       dimensions);
+
+    }
+
+    pub fn add_species(&mut self, species: Species)
+    {
+        // Register all individuals in that species to the respective worlds
+        //
+        let _ = species.get_generation().size();
+        
+        // Physics Registration
+        for ind in species.get_generation().iter()
+        {
+            println!(">>> Adding Invidivudal to Physical World");
+            self.physical_world.add(ind.get_physics(), ind.get_morphology());
+        }
+        self.physical_world.step();
+
+        // Once fully registered we add them to the list of species
+        self.species.push(species);
+    }
+
     pub fn step(&mut self)
     {
         self.environment_setup();
@@ -26,15 +54,10 @@ impl Simulation
         self.act_phase();
         self.consequence();
     }
-    pub fn add(&mut self, species: Species)
-    {
-        // Do something?
-        self.species.push(species);
-    }
 
     fn environment_setup(&self)
     {
-        // Set up World Sensable information once
+        // Set up World 
     }
     fn sense_phase(&mut self)
     {
@@ -118,6 +141,9 @@ mod test
 {
     use super::*;
 
+    use ::control::*;
+    use ::morphology::*;
+    use ::polymini::*;
     use ::species::*;
 
     #[test]
@@ -125,8 +151,67 @@ mod test
     {
         //
         let mut s = Simulation::new();
-        s.add(Species::new( vec![] ));
+        s.add_species(Species::new(vec![]));
 
         s.step();
     }
+
+    #[test]
+    fn test_step_2()
+    {
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!(">> {:?}", p1.get_physics().get_pos());
+
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        s.step();
+    }
+
+    #[test]
+    fn test_step_3()
+    {
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!(">> {:?}", p1.get_physics().get_pos());
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        for _ in 0..10 
+        {
+            s.step();
+        }
+    }
+
+    #[test]
+    fn test_step_4()
+    {
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!("{:?}", p1.get_morphology());
+        println!(">> {:?}", p1.get_physics().get_pos());
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        s.add_object((10.0, 2.0), (1, 1));
+        for _ in 0..10 
+        {
+            s.step();
+        }
+    }
+
+
 }

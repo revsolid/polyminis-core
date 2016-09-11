@@ -3,31 +3,24 @@ use std::cmp::{min, max};
 use std::fmt;
 
 use ::genetics::*;
+use ::types::*;
 
 //
 //
 pub type Coord = (i32, i32);
 pub type Chromosome = [u8; 4];
 
-#[derive(Copy, Clone, Debug)]
-pub enum Directions
-{
-    UP,
-    DOWN,
-    LEFT,
-    RIGHT,
-}
 
 //
 //
 #[derive(Debug)]
 pub struct AdjacencyInfo
 {
-    adj: Vec<Directions>
+    adj: Vec<Direction>
 }
 impl AdjacencyInfo
 {
-    fn new(adjacency_info: Vec<Directions>) -> AdjacencyInfo
+    fn new(adjacency_info: Vec<Direction>) -> AdjacencyInfo
     {
         AdjacencyInfo { adj: adjacency_info }
     }
@@ -39,7 +32,7 @@ impl AdjacencyInfo
         {
             match *d
             {
-                Directions::UP    => 
+                Direction::UP    => 
                 {   // UP is special cased so we can add the head correctly
                      // to accomodate art's request to have a 'head'
                     if coord.1 > 0
@@ -47,9 +40,10 @@ impl AdjacencyInfo
                         to_ret.push((coord.0, coord.1 - 1))
                     }
                 },
-                Directions::DOWN  => to_ret.push( (coord.0,     coord.1 + 1)),
-                Directions::LEFT  => to_ret.push( (coord.0 - 1, coord.1)),
-                Directions::RIGHT => to_ret.push( (coord.0 + 1, coord.1)),
+                Direction::DOWN  => to_ret.push( (coord.0,     coord.1 + 1)),
+                Direction::LEFT  => to_ret.push( (coord.0 - 1, coord.1)),
+                Direction::RIGHT => to_ret.push( (coord.0 + 1, coord.1)),
+                _ => panic!("Found incorrect Direction {:?} in adjacency info", d),
             }
         }
         to_ret
@@ -132,7 +126,7 @@ impl PolyminiCellFactory for BasicPolyminiCellFactory
         let gp1 = ((0xFF & chromosome[2]) as u16) << 8;
         let gp  = gp1 + (0xFF & chromosome[3]) as u16;
 
-        let dirs = vec![Directions::UP, Directions::DOWN, Directions::LEFT, Directions::RIGHT];
+        let dirs = vec![Direction::UP, Direction::DOWN, Direction::LEFT, Direction::RIGHT];
         let mut adj_dirs = vec![];
 
         for i in 0..4
@@ -284,7 +278,7 @@ impl Morphology
         }
     }
 
-    fn new(chromosomes: Vec<Chromosome>) -> Morphology
+    pub fn new(chromosomes: Vec<Chromosome>) -> Morphology
     {
         let mut cells = vec![];
         let mut original_chromosome = vec![];
@@ -352,6 +346,11 @@ impl Morphology
         
         Morphology { dimensions: (w, h), representations: r1, original_chromosome: original_chromosome}
     }
+
+    pub fn get_dimensions(&self) -> (u8, u8)
+    {
+        return self.dimensions
+    }
 }
 impl Genetics for Morphology
 {
@@ -411,8 +410,10 @@ impl Genetics for Morphology
                                other.original_chromosome[j][3] ])
         }
 
-        println!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit, cross_point_chromosome_2);
-        println!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome], other.original_chromosome[cross_point_chromosome_2]);
+        println!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit,
+                 cross_point_chromosome_2);
+        println!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome],
+                 other.original_chromosome[cross_point_chromosome_2]);
         println!("{}", link_byte);
 
         Morphology::new(chromosomes)
@@ -426,12 +427,13 @@ impl Genetics for Morphology
 #[cfg(test)]
 mod test
 {
-    use ::morphology::*;
     use ::genetics::*;
+    use ::morphology::*;
+    use ::types::*;
     #[test]
     fn test_adjacency_vertical()
     {
-        let adj_info = AdjacencyInfo{ adj: vec![Directions::UP, Directions::DOWN] };
+        let adj_info = AdjacencyInfo{ adj: vec![Direction::UP, Direction::DOWN] };
         let neighbours = adj_info.get_neighbours((0, 1));
         assert_eq!(neighbours.len(), 2);
         assert_eq!( (neighbours[0].0, neighbours[0].1), (0,0));
@@ -441,7 +443,7 @@ mod test
     #[test]
     fn test_adjacency_vertical_2()
     {
-        let adj_info = AdjacencyInfo{ adj: vec![Directions::UP, Directions::DOWN] };
+        let adj_info = AdjacencyInfo{ adj: vec![Direction::UP, Direction::DOWN] };
         let neighbours = adj_info.get_neighbours((0, 0));
         assert_eq!(neighbours.len(), 1);
         assert_eq!((neighbours[0].0, neighbours[0].1), (0,1));

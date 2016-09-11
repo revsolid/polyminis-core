@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
+use ::actuators::*;
 use ::genetics::*;
+use ::types::*;
 
 pub struct Perspective
 {
@@ -29,28 +31,20 @@ impl Perspective
 pub type SensorTag = i32;
 pub type SensoryPayload = HashMap<SensorTag, f32>;
 
-pub type ActuatorTag = i32;
 
-// TODO: There's some cool way of doing this, macros, templates or
-// something
-pub enum Action
-{
-    Move(i32),
-    Rotate(i32),
-}
-pub type ActionList = Vec<Action>;
 
 pub struct Control
 {
     sensor_list: Vec<SensorTag>, 
-    // ActuatorList
+    actuator_list: Vec<ActuatorTag>,
     // NN
 }
 impl Control
 {
     pub fn new() -> Control
     {
-        Control { sensor_list: vec![] }
+        Control { sensor_list: vec![],
+                  actuator_list: vec![] }
     }
     pub fn sense(&mut self, sensed: &SensoryPayload)
     {
@@ -79,7 +73,9 @@ impl Control
     {
         // Get actions from Actuators
         // Copy actions into ActionList
-        ActionList::new()
+        // TODO: TOTALLY temporary implementation used to test
+        vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2)),
+             Action::MoveAction(MoveAction::Move(Direction::ROTATION, 1.1))]
     }
     pub fn get_sensor_list(&self) -> &Vec<SensorTag>
     {

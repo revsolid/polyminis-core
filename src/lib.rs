@@ -1,4 +1,6 @@
 #[allow(dead_code)]
+pub mod actuators;
+#[allow(dead_code)]
 pub mod control;
 #[allow(dead_code)]
 pub mod environment;
@@ -12,6 +14,10 @@ pub mod physics;
 pub mod polymini;
 #[allow(dead_code)]
 pub mod species;
+#[allow(dead_code)]
+pub mod types;
+#[allow(dead_code)]
+pub mod uuid;
 
 #[macro_use]
 extern crate log;
