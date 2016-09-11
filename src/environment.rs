@@ -1,76 +1,217 @@
-use ::polymini::*;
-
+use ::control::*;
+use ::physics::*;
+use ::species::*;
+use ::uuid::*;
 
 struct Environment
 {
     simulation: Simulation,
 }
 
-struct World
+pub struct Simulation
 {
-    // Physics Manager
-}
-impl World
-{
-    pub fn apply(&self, _: &ActionList)
-    {}
-}
-
-struct Simulation
-{
-    world: World,
+    physical_world: PhysicsWorld,
+    species: Vec<Species>,
 }
 impl Simulation
 {
-    fn step(&mut self, generation: &mut PolyminiGeneration)
+    pub fn new() -> Simulation
     {
-        self.environment_setup(generation);
-        self.sense_phase(generation);
-        self.think_phase(generation);
-        self.act_phase(generation);
-        self.environment_update(generation);
+        Simulation { physical_world: PhysicsWorld::new(), species: vec![] } 
     }
-    fn environment_setup(&self, _: &mut PolyminiGeneration)
+
+    pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
     {
-        // Set up World Sensable information once
+        self.physical_world.add_object(PolyminiUUIDCtx::next(),
+                                       position,
+                                       dimensions);
+
     }
-    fn sense_phase(&self, generation: &mut PolyminiGeneration)
+
+    pub fn add_species(&mut self, species: Species)
     {
-        for polymini in &mut generation.individuals.population().iter_mut()
+        // Register all individuals in that species to the respective worlds
+        //
+        let _ = species.get_generation().size();
+        
+        // Physics Registration
+        for ind in species.get_generation().iter()
         {
-            let sp = self.sense_for(&polymini);
-            polymini.sense_phase(&sp);
-        } 
+            println!(">>> Adding Invidivudal to Physical World");
+            self.physical_world.add(ind.get_physics(), ind.get_morphology());
+        }
+        self.physical_world.step();
+
+        // Once fully registered we add them to the list of species
+        self.species.push(species);
     }
-    fn think_phase(&self, generation: &mut PolyminiGeneration)
+
+    pub fn step(&mut self)
     {
-        for polymini in &mut generation.individuals.population().iter_mut()
-        {
-            polymini.think_phase();
-        } 
+        self.environment_setup();
+        self.sense_phase();
+        self.think_phase();
+        self.act_phase();
+        self.consequence();
     }
-    fn act_phase(&self, generation: &mut PolyminiGeneration) 
+
+    fn environment_setup(&self)
     {
-        for polymini in &mut generation.individuals.population().iter_mut()
-        {
-            let mut al = self.actions_for(&polymini);
-            polymini.act_phase(&mut al);
-            self.world.apply(&al);
-        } 
+        // Set up World 
     }
-    fn environment_update(&self, _: &mut PolyminiGeneration)
+    fn sense_phase(&mut self)
+    {
+        for s in 0..self.species.len()
+        {
+            let gen_size = self.species[s].get_generation().size();
+            for i in 0..gen_size
+            {
+                let perspective;
+                {
+                    let polymini = self.species[s].get_generation().get_individual(i);
+                    perspective = polymini.get_perspective();
+                }
+    
+                let sensed = self.sense_for(&perspective);
+                let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
+                p.sense_phase(&sensed);
+            }
+        }
+    }
+    fn think_phase(&mut self)
+    {
+        for s in &mut self.species
+        {
+            let generation = s.get_generation_mut();
+            for i in 0..generation.size()
+            {
+                let mut polymini = generation.get_individual_mut(i);
+                polymini.think_phase();
+            }
+        }
+    }
+    fn act_phase(&mut self)
+    {
+        for s in &mut self.species
+        {
+            let generation = s.get_generation_mut();
+            for i in 0..generation.size()
+            {
+                let mut polymini = generation.get_individual_mut(i);
+                polymini.act_phase(&mut self.physical_world);
+            }
+        }
+    }
+    fn consequence(&mut self)
     {
         // Update environment based on the aftermath of the simulation
+
+        /* Physics */
+        self.physical_world.step();
+
+        for s in &mut self.species
+        {
+            let generation = s.get_generation_mut();
+            for i in 0..generation.size()
+            {
+                let mut polymini = generation.get_individual_mut(i);
+                polymini.consequence_physical(&self.physical_world);
+            }
+        }
+        // After Physics is updated, each Polymini has data like
+        // collisions and position, to be used by other systems
+        // like combat
+
+        // Combat
+
+        // Energy consumption
+    }
+    fn sense_for(&self, _: &Perspective) -> SensoryPayload
+    {
+        let sp = SensoryPayload::new();
+        // Go through the environment and Polyminis filling up
+        // the sensory payload
+        sp
+    }
+}
+
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+
+    use ::control::*;
+    use ::morphology::*;
+    use ::polymini::*;
+    use ::species::*;
+
+    #[test]
+    fn test_step()
+    {
+        //
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![]));
+
+        s.step();
     }
 
-    //
-    fn sense_for(&self, _: &Polymini) -> SensoryPayload
+    #[test]
+    fn test_step_2()
     {
-        SensoryPayload {}
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!(">> {:?}", p1.get_physics().get_pos());
+
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        s.step();
     }
 
-    fn actions_for(&self, _: &Polymini) -> ActionList
+    #[test]
+    fn test_step_3()
     {
-        ActionList {}
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!(">> {:?}", p1.get_physics().get_pos());
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        for _ in 0..10 
+        {
+            s.step();
+        }
     }
+
+    #[test]
+    fn test_step_4()
+    {
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new(Morphology::new(chromosomes),
+                               Control::new());
+        println!("{:?}", p1.get_morphology());
+        println!(">> {:?}", p1.get_physics().get_pos());
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1]));
+        s.add_object((10.0, 2.0), (1, 1));
+        for _ in 0..10 
+        {
+            s.step();
+        }
+    }
+
+
 }

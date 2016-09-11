@@ -1,55 +1,10 @@
-use rust_monster::ga::ga_core::*;
-use rust_monster::ga::ga_population::*;
-use rust_monster::ga::ga_simple::*;
-
+use ::control::*;
+use ::genetics::*;
 use ::morphology::*;
+use ::physics::*;
+use ::uuid::*;
 
-pub struct SensoryPayload{}
-pub struct ActionList {}
-
-
-pub struct Species
-{
-    // Translation Table
-    genetic_algorithm: SimpleGeneticAlgorithm<Polymini>, 
-}
-
-
-struct Splice {} 
-struct Trait {}
-
-pub struct Sensor
-{
-}
-pub struct Actuator
-{
-}
-pub struct Control
-{
-    // SensorList
-    // ActuatorList
-    // NN
-}
-impl Control
-{
-    pub fn sense(&self, _: &SensoryPayload)
-    {
-        // Feed SensoryPayload into sensors
-        // Copy values from sensors to input layer of NN
-    }
-    pub fn think(&self)
-    {
-        // Feedforward NN
-        // Copy values from output layer into Actuators
-    }
-    pub fn act(&self, _: &mut ActionList)
-    {
-        // Get actions from Actuators
-        // Copy actions into ActionList
-    }
-}
-
-pub struct Physics {}
+use std::any::Any;
 
 pub struct Statistics
 {
@@ -59,22 +14,36 @@ pub struct Statistics
 
 pub struct Polymini
 {
+    uuid: usize,
+
     morph: Morphology,
     control: Control,
     physics: Physics,
+
     statistics: Statistics,
 
-    fitness: f32
+    // TODO: Temporarily pub
+    pub fitness: f32
 }
 impl Polymini
 {
-    pub fn new(f:f32) -> Polymini
+    pub fn new(morphology: Morphology, control: Control) -> Polymini
     {
-        Polymini { control: Control {},
-                   morph: Morphology::new(),
-                   physics: Physics {},
+        let uuid = PolyminiUUIDCtx::next();
+        let dim = morphology.get_dimensions();
+        Polymini { uuid: uuid,
+                   morph: morphology,
+                   control: control,
+                   physics: Physics::new(uuid, dim, 1.0, 0.0, 0),
                    statistics: Statistics { hp: 0, energy: 0 },
-                   fitness: f}
+                   fitness: 0.0 }
+    }
+    pub fn get_perspective(&self) -> Perspective
+    {
+        Perspective::new(self.uuid,
+                         self.physics.get_pos(),
+                         self.physics.get_orientation(),
+                         self.physics.get_move_succeded())
     }
     pub fn sense_phase(&mut self, sp: &SensoryPayload)
     {
@@ -84,18 +53,50 @@ impl Polymini
     {
         self.control.think();
     }
-    pub fn act_phase(&mut self, al: &mut ActionList)
+    pub fn act_phase(&mut self, phys_world: &mut PhysicsWorld)
     {
-        self.control.act(al);
+        let actions = self.control.get_actions();
+
+        // Feed them into other systems
+        self.physics.act_on(actions, phys_world);
+    }
+
+    pub fn get_id(&self) -> usize
+    {
+        self.uuid
+    }
+
+    pub fn consequence_physical(&mut self, world: &PhysicsWorld)
+    {
+        self.physics.update_state(world);
+    }
+
+    pub fn get_morphology(&self) -> &Morphology
+    {
+        &self.morph
+    }
+
+    pub fn get_physics(&self) -> &Physics
+    {
+        &self.physics
+    }
+
+    pub fn get_control(&self) -> &Control
+    {
+        &self.control
     }
 }
-impl GAIndividual for Polymini
-{ 
-    fn crossover(&self, _: &Polymini) -> Box<Polymini>
+
+impl PolyminiGAIndividual for Polymini
+{
+    fn crossover(&self, other: &Polymini, random_ctx: &mut PolyminiRandomCtx) -> Box<Polymini>
     {
-        Box::new(Polymini::new(0.0))
+        let new_morphology = self.get_morphology().crossover(&other.get_morphology(), random_ctx);
+        let new_control = self.get_control().crossover(&other.get_control(), random_ctx);
+
+        Box::new(Polymini::new(new_morphology, new_control))
     }
-    fn mutate(&mut self, _:f32)
+    fn mutate(&mut self, _:f32, _: &mut PolyminiRandomCtx)
     {
         // Structural mutation should happen first
         //   morphology.mutate
@@ -103,10 +104,9 @@ impl GAIndividual for Polymini
         //   control.mutate
         // restart self (?)
     }
-
-    fn evaluate(&mut self) -> f32
+    fn evaluate(&mut self, _: &mut Any)
     {
-        self.fitness 
+        self.fitness;
     }
     fn fitness(&self) -> f32
     {
@@ -114,15 +114,15 @@ impl GAIndividual for Polymini
     }
     fn set_fitness(&mut self, f: f32)
     {
-        self.fitness = f
+        self.fitness = f;
     }
     fn raw(&self) -> f32
     {
-        0.0
+        self.fitness
     }
-}
 
-pub struct PolyminiGeneration<'a>
-{
-    pub individuals: &'a mut GAPopulation<Polymini>
+    fn set_raw(&mut self, r: f32)
+    {
+        self.fitness = r;
+    }
 }
