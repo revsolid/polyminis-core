@@ -278,7 +278,7 @@ impl ProximityHandler<Point2<f32>, Isometry2<f32>, PolyminiPhysicsData> for Phys
 // Physics World
 pub struct PhysicsWorld
 {
-    c: CollisionWorld2<f32, PolyminiPhysicsData>,
+    world: CollisionWorld2<f32, PolyminiPhysicsData>,
 
     //
     polyminis_cgroup: CollisionGroups,
@@ -299,7 +299,7 @@ impl PhysicsWorld
         ocg.set_membership(&[2]);
         ocg.set_whitelist(&[1]);
 
-        let ph_w = PhysicsWorld { c: col_w,
+        let ph_w = PhysicsWorld { world: col_w,
                                   polyminis_cgroup: pcg,
                                   objects_cgroup: ocg
         };
@@ -312,7 +312,7 @@ impl PhysicsWorld
         let rect = Cuboid::new(nc_dim);
         let nc_pos = Vector2::new(position.0 + nc_dim.x / 2.0, position.1 + nc_dim.y / 2.0);
 
-        self.c.deferred_add(uuid,
+        self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()),
                             ShapeHandle2::new(rect),
                             self.objects_cgroup, GeometricQueryType::Proximity(0.0),
@@ -324,7 +324,7 @@ impl PhysicsWorld
         let shapes = Physics::shapes_from_morphology(morph);
 
         //TODO: QueryType
-        self.c.deferred_add(physics.uuid,
+        self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
                             self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
@@ -336,7 +336,7 @@ impl PhysicsWorld
     {
         let new_pos;
         {
-            let p_obj = self.c.collision_object(id).unwrap();
+            let p_obj = self.world.collision_object(id).unwrap();
             p_obj.data.initial_pos.set(p_obj.position.translation);
             match action
             {
@@ -377,26 +377,61 @@ impl PhysicsWorld
                 }
             }
         }
-        self.c.deferred_set_position(id, new_pos)
+        self.world.deferred_set_position(id, new_pos)
     }
 
     pub fn step(&mut self)
     {
-        self.c.update();
+        let mut record_events = true;
+
         // Idea: We handle collisions, and undo movements and reupdate
         // so things stay in the same place but the collision is recorded
-        //self.c.update();
-        for c in &mut self.c.proximity_pairs()
+        //self.world.update();
+        //
+        loop
         {
-            let (x, y, _) = c;
-            println!("{:?} {:?}", x.data.initial_pos, x.position.translation);
-            println!("{:?} {:?}", y.data.initial_pos, y.position.translation);
-        }
+            self.world.update();
+            let mut collisions = false;
+            let mut corrections = vec![];
+            for coll_data in self.world.proximity_pairs()
+            {
+                let (object_1, object_2, _) = coll_data;
+                println!("{:?} {:?}", object_1.data.initial_pos, object_1.position.translation);
+                println!("{:?} {:?}", object_2.data.initial_pos, object_2.position.translation);
 
+                let mut n_pos = object_1.position;
+                n_pos.translation = object_1.data.initial_pos.get();
+
+                corrections.push((object_1.uid, n_pos));
+
+                let mut n_pos_2 = object_2.position;
+                n_pos_2.translation = object_2.data.initial_pos.get();
+                corrections.push((object_2.uid, n_pos_2));
+
+                if record_events
+                {
+                    // Record Event
+                }
+
+                collisions = true;
+            }
+
+            for c in corrections
+            {
+                self.world.deferred_set_position(c.0, c.1);
+            }
+
+            // Only record collision events on the first pass, not on the rewind passes
+            record_events = false;
+            if !collisions
+            {
+                break;
+            }
+        }
     }
 
     fn get(&self, id: usize) -> Option<&CollisionObject2<f32, PolyminiPhysicsData>>
     {
-        self.c.collision_object(id)
+        self.world.collision_object(id)
     }
 }
