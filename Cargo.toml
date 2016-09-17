@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Ricardo Sisnett <sisnett@polyminis.com>"]
 
 [dependencies]
-rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git", branch = "mutable_individuals" }
+rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git" }
 snowflake = "^1.2.0"
 log = "0.3.6"
 ncollide = "0.10.0"
