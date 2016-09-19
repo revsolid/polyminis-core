@@ -3,6 +3,7 @@ use std::cmp::{min, max};
 use std::fmt;
 
 use ::genetics::*;
+use ::serialization::*;
 use ::types::*;
 
 //
@@ -106,18 +107,17 @@ impl Trait
     }
 }
 
-
 //
 //
-trait PolyminiCellFactory
+pub struct TranslationTable;
+impl TranslationTable
 {
-    fn create_for_chromosome(c: Chromosome) -> Cell;
-}
-
-struct BasicPolyminiCellFactory;
-impl PolyminiCellFactory for BasicPolyminiCellFactory
-{
-    fn create_for_chromosome(chromosome: Chromosome) -> Cell
+    pub fn new() -> TranslationTable
+    {
+        TranslationTable {}
+    }
+    fn create_for_chromosome(&self,
+                             chromosome: Chromosome) -> Cell
     {
 
         //TODO: Control / Metadata Payload
@@ -278,13 +278,14 @@ impl Morphology
         }
     }
 
-    pub fn new(chromosomes: Vec<Chromosome>) -> Morphology
+    pub fn new(chromosomes: Vec<Chromosome>,
+               translation_table: &TranslationTable) -> Morphology
     {
         let mut cells = vec![];
         let mut original_chromosome = vec![];
         for c in chromosomes
         {
-            cells.push(BasicPolyminiCellFactory::create_for_chromosome(c));
+            cells.push(translation_table.create_for_chromosome(c));
             original_chromosome.push(c);
         }
 
@@ -416,10 +417,27 @@ impl Genetics for Morphology
                  other.original_chromosome[cross_point_chromosome_2]);
         println!("{}", link_byte);
 
-        Morphology::new(chromosomes)
+        Morphology::new(chromosomes, &TranslationTable::new())
     }
 
     fn mutate(&self, _: &mut PolyminiRandomCtx){}
+}
+impl Serializable for Morphology
+{
+    fn serialize(&self,  _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        let mut json_arr = pmJsonArray::new();
+
+        for c in &self.original_chromosome
+        {
+            json_arr.push(c.to_json());
+        }
+
+
+        json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
+        Json::Object(json_obj)
+    }
 }
 
 //
@@ -465,7 +483,7 @@ mod test
                                [0,  0, 0xBE, 0xEF],
                                [0,  0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(chromosomes);
+        let morph = Morphology::new(chromosomes, &TranslationTable::new());
 
         assert_eq!((3, 2), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
@@ -483,7 +501,7 @@ mod test
                                [0,  0, 0xBE, 0xEF],
                                [0,  0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(chromosomes);
+        let morph = Morphology::new(chromosomes, &TranslationTable::new());
         assert_eq!((3, 1), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
         println!("{:?}", morph);
@@ -501,8 +519,8 @@ mod test
                       [0,    0, 0xBE, 0xEF],
                       [0,    0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(c1);
-        let morph_2 = Morphology::new(c2);
+        let morph = Morphology::new(c1, &TranslationTable::new());
+        let morph_2 = Morphology::new(c2, &TranslationTable::new());
 
         let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
 
@@ -521,8 +539,8 @@ mod test
                       [0,    0, 0x00, 0x00],
                       [0,    0, 0x00, 0x00]];
 
-        let morph = Morphology::new(c1);
-        let morph_2 = Morphology::new(c2);
+        let morph = Morphology::new(c1, &TranslationTable::new());
+        let morph_2 = Morphology::new(c2, &TranslationTable::new());
 
         let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
 

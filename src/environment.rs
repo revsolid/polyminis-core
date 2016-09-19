@@ -1,5 +1,6 @@
 use ::control::*;
 use ::physics::*;
+use ::serialization::*;
 use ::species::*;
 use ::uuid::*;
 
@@ -12,12 +13,13 @@ pub struct Simulation
 {
     physical_world: PhysicsWorld,
     species: Vec<Species>,
+    steps: usize,
 }
 impl Simulation
 {
     pub fn new() -> Simulation
     {
-        Simulation { physical_world: PhysicsWorld::new(), species: vec![] } 
+        Simulation { physical_world: PhysicsWorld::new(), species: vec![], steps: 0 } 
     }
 
     pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
@@ -25,7 +27,7 @@ impl Simulation
         self.physical_world.add_object(PolyminiUUIDCtx::next(),
                                        position,
                                        dimensions);
-
+        //TODO: Track this object, this can be done here since the object wont move or change
     }
 
     pub fn add_species(&mut self, species: Species)
@@ -37,7 +39,6 @@ impl Simulation
         // Physics Registration
         for ind in species.get_generation().iter()
         {
-            println!(">>> Adding Invidivudal to Physical World");
             self.physical_world.add(ind.get_physics(), ind.get_morphology());
         }
         self.physical_world.step();
@@ -53,6 +54,7 @@ impl Simulation
         self.think_phase();
         self.act_phase();
         self.consequence();
+        self.steps += 1;
     }
 
     fn environment_setup(&self)
@@ -135,6 +137,25 @@ impl Simulation
     }
 }
 
+//
+//
+impl Serializable for Simulation
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("step".to_string(), self.steps.to_json());
+
+        let mut json_arr = pmJsonArray::new();
+        for s in &self.species
+        {
+            json_arr.push(s.serialize(ctx));
+        }
+        json_obj.insert("species".to_string(), Json::Array(json_arr));
+        Json::Object(json_obj)
+    }
+}
+
 
 #[cfg(test)]
 mod test
@@ -144,6 +165,7 @@ mod test
     use ::control::*;
     use ::morphology::*;
     use ::polymini::*;
+    use ::serialization::*;
     use ::species::*;
 
     #[test]
@@ -164,9 +186,8 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes),
+        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
                                Control::new());
-        println!(">> {:?}", p1.get_physics().get_pos());
 
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
@@ -181,9 +202,8 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes),
+        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
                                Control::new());
-        println!(">> {:?}", p1.get_physics().get_pos());
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
         for _ in 0..10 
@@ -200,18 +220,15 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes),
+        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
                                Control::new());
-        println!("{:?}", p1.get_morphology());
-        println!(">> {:?}", p1.get_physics().get_pos());
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
         s.add_object((10.0, 2.0), (1, 1));
         for _ in 0..10 
         {
             s.step();
+            println!("{}", s.serialize(&mut SerializationCtx::new()));
         }
     }
-
-
 }
