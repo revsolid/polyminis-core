@@ -4,10 +4,10 @@ extern crate rust_monster;
 use self::rust_monster::ga::ga_population::*;
 // Alias GAIndividual
 pub use self::rust_monster::ga::ga_core::GAIndividual as PolyminiGAIndividual;
+// Alias GA
+pub use self::rust_monster::ga::ga_core::GeneticAlgorithm as PolyminiGA;
 // Alias GARandomCtx
 pub use self::rust_monster::ga::ga_random::GARandomCtx as PolyminiRandomCtx;
-// Alias SimpleGA
-pub use self::rust_monster::ga::ga_simple::SimpleGeneticAlgorithm as PolyminiGA;
 //
 //
 
@@ -49,5 +49,35 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
     pub fn iter(&self) -> PolyminiPopulationIter<T>
     {
         self.individuals.raw_score_iterator()
+    }
+}
+
+pub struct PolyminiGeneticAlgorithm<T: PolyminiGAIndividual>
+{
+   population: PolyminiGeneration<T> 
+}
+impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
+{
+    pub fn new(pop: Vec<T>) -> PolyminiGeneticAlgorithm<T>
+    {
+        PolyminiGeneticAlgorithm { population: PolyminiGeneration::new(pop) }
+    }
+    
+    pub fn get_population(&self) -> &PolyminiGeneration<T>
+    {
+        &self.population
+    }
+
+    pub fn get_population_mut(&mut self) -> &mut PolyminiGeneration<T>
+    {
+        &mut self.population
+    }
+}
+
+impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
+{
+    fn population(&mut self) -> &mut GAPopulation<T>
+    {
+        &mut self.population.individuals
     }
 }

@@ -15,11 +15,13 @@ use self::ncollide::world::{CollisionWorld, CollisionWorld2,
 //
 
 use std::f32::consts;
-use std::cell::Cell as std_Cell;
+use std::cell::{Cell as std_Cell, RefCell as std_RefCell};
 
 use ::actuators::*;
 use ::morphology::*;
+use ::serialization::*;
 use ::types::*;
+use ::uuid::PUUID;
 
 // Polymini Physics Object Type
 #[derive(Debug)]
@@ -29,11 +31,32 @@ enum PPOType
     StaticObject,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CollisionEvent
+{
+    id_1: PUUID, 
+    id_2: PUUID,
+    pos_1: Vector2<f32>,
+    pos_2: Vector2<f32>
+    //TODO: More?
+}
+impl Serializable for CollisionEvent
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("ID_1".to_string(), self.id_1.to_json());
+        json_obj.insert("ID_2".to_string(), self.id_2.to_json());
+        Json::Object(json_obj)
+    }
+}
+
 #[derive(Debug)]
 struct PolyminiPhysicsData
 {
     ppo_type: PPOType,
-    initial_pos: std_Cell<Vector2<f32>>
+    initial_pos: std_Cell<Vector2<f32>>,
+    collision_events: std_RefCell<Vec<CollisionEvent>>,
 }
 impl PolyminiPhysicsData 
 {
@@ -43,6 +66,7 @@ impl PolyminiPhysicsData
         {
             ppo_type: PPOType::Polymini,
             initial_pos: std_Cell::new(pos),
+            collision_events: std_RefCell::new(vec![])
         }
     }
     fn new_static_object(pos: Vector2<f32>) -> PolyminiPhysicsData
@@ -51,6 +75,7 @@ impl PolyminiPhysicsData
         {
             ppo_type: PPOType::StaticObject,
             initial_pos: std_Cell::new(pos),
+            collision_events: std_RefCell::new(vec![])
         }
     }
 }
@@ -143,16 +168,23 @@ fn dimensions_ncoll_to_sim(dim: Vector2<f32>) -> (u8, u8)
     (dim.x as u8, dim.y as u8)
 }
 
+fn serialize_vector(v: Vector2<f32>) -> Json
+{
+    (v.x, v.y).to_json()
+}
+
 
 // Physics
 //
 pub struct Physics
 {
-    uuid: usize,
+    uuid: PUUID,
+    ncoll_dimensions: Vector2<f32> ,
+
     ncoll_pos: Vector2<f32>,
     orientation: u8,
     move_succeded: bool,
-    ncoll_dimensions: Vector2<f32> 
+    collisions: Vec<CollisionEvent>
 }
 impl Physics
 {
@@ -173,7 +205,7 @@ impl Physics
     }
 
     // Public
-    pub fn new(uuid: usize, dimensions: (u8, u8), x: f32, y: f32, orientation: u8) -> Physics
+    pub fn new(uuid: PUUID, dimensions: (u8, u8), x: f32, y: f32, orientation: u8) -> Physics
     {
         let nc_dims = dimensions_sim_to_ncoll(dimensions);
         let nc_pos = Vector2::new(x + nc_dims.x / 2.0, y + nc_dims.y / 2.0);
@@ -182,15 +214,18 @@ impl Physics
         {
             uuid: uuid,
             ncoll_dimensions: nc_dims,
+
             ncoll_pos: nc_pos,
             orientation: orientation,
-            move_succeded: true
+            move_succeded: true,
+            collisions: vec![],
         }
     }
 
     pub fn get_pos(&self) -> (f32, f32)
     {
-        (self.ncoll_pos.x, self.ncoll_pos.y)
+        (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0,
+         self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
     }
 
     pub fn get_orientation(&self) -> u8
@@ -245,12 +280,41 @@ impl Physics
     {
         let o = physics_world.get(self.uuid).unwrap();
 
+        // Update position
         self.ncoll_pos = o.position.translation;
+        // If an attempt to move was made, but we didn't move, update
+        // last move succeded (TODO)
+        //
 
-        println!(">> {:?}", self.ncoll_pos);
-        println!(">>> {:?}", o.position.rotation);
-        //TODO: Calculate orientation, go through any collision events
-        // etc...
+        // Copy collision events over and nuke the list
+        self.collisions.clear();
+
+        for ev in o.data.collision_events.borrow().iter()
+        {
+            self.collisions.push(*ev);
+        }
+
+        // Nuke'm
+        o.data.collision_events.borrow_mut().clear();
+
+        //TODO: Calculate orientation,
+    }
+}
+impl Serializable for Physics
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("id".to_string(), self.uuid.to_json());
+        json_obj.insert("dimensions".to_string(), serialize_vector(self.ncoll_dimensions));
+        json_obj.insert("position".to_string(), self.get_pos().to_json());
+        let mut ev_arr = pmJsonArray::new();
+        for ev in &self.collisions
+        {
+            ev_arr.push(ev.serialize(ctx));
+        }
+        json_obj.insert("collisions".to_string(), Json::Array(ev_arr));
+        Json::Object(json_obj)
     }
 }
 
@@ -268,8 +332,7 @@ impl ProximityHandler<Point2<f32>, Isometry2<f32>, PolyminiPhysicsData> for Phys
         if new_proximity ==  Proximity::Intersecting
         {
             //
-            // Touching
-            println!("NO TOUCHING!!");
+            //  TODO
         }
     }
 }
@@ -306,7 +369,7 @@ impl PhysicsWorld
         ph_w
     }
 
-    pub fn add_object(&mut self, uuid: usize, position: (f32, f32),  dimensions: (u8, u8))
+    pub fn add_object(&mut self, uuid: PUUID, position: (f32, f32),  dimensions: (u8, u8))
     {
         let nc_dim = dimensions_sim_to_ncoll(dimensions);
         let rect = Cuboid::new(nc_dim);
@@ -323,7 +386,6 @@ impl PhysicsWorld
     {
         let shapes = Physics::shapes_from_morphology(morph);
 
-        //TODO: QueryType
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
@@ -396,9 +458,6 @@ impl PhysicsWorld
             for coll_data in self.world.proximity_pairs()
             {
                 let (object_1, object_2, _) = coll_data;
-                println!("{:?} {:?}", object_1.data.initial_pos, object_1.position.translation);
-                println!("{:?} {:?}", object_2.data.initial_pos, object_2.position.translation);
-
                 let mut n_pos = object_1.position;
                 n_pos.translation = object_1.data.initial_pos.get();
 
@@ -411,6 +470,13 @@ impl PhysicsWorld
                 if record_events
                 {
                     // Record Event
+                    let ev = CollisionEvent { id_1: object_1.uid,
+                                              id_2: object_2.uid,
+                                              pos_1: object_1.position.translation,
+                                              pos_2: object_2.position.translation
+                    };
+                    object_1.data.collision_events.borrow_mut().push(ev);
+                    object_2.data.collision_events.borrow_mut().push(ev);
                 }
 
                 collisions = true;
