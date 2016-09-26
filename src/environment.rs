@@ -213,5 +213,37 @@ mod test
         }
     }
 
+    #[test]
+    fn test_step_double_coll()
+    {
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let chromosomes2 = vec![[0, 0x09, 0x6A, 0xAD],
+                                [0, 0x0B, 0xBE, 0xDA],
+                                [0,    0, 0xBE, 0xEF],
+                                [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(chromosomes),
+                               Control::new());
+        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(chromosomes2),
+                               Control::new());
+
+        println!("{:?}", p1.get_morphology());
+        println!(">> {:?}", p1.get_physics().get_pos());
+        println!("{:?}", p2.get_morphology());
+        println!(">> {:?}", p2.get_physics().get_pos());
+        let mut s = Simulation::new();
+        s.add_species(Species::new(vec![p1, p2]));
+        s.add_object((10.0, 2.0), (1, 1));
+        for _ in 0..10 
+        {
+            s.step();
+        }
+        assert_eq!(0,1);
+    }
+
 
 }

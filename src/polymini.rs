@@ -29,12 +29,16 @@ impl Polymini
 {
     pub fn new(morphology: Morphology, control: Control) -> Polymini
     {
+        Polymini::new_at((0.0, 0.0), morphology, control)
+    }
+    pub fn new_at(pos: (f32, f32), morphology: Morphology, control: Control) -> Polymini
+    {
         let uuid = PolyminiUUIDCtx::next();
         let dim = morphology.get_dimensions();
         Polymini { uuid: uuid,
                    morph: morphology,
                    control: control,
-                   physics: Physics::new(uuid, dim, 1.0, 0.0, 0),
+                   physics: Physics::new(uuid, dim, pos.0, pos.1, 0),
                    statistics: Statistics { hp: 0, energy: 0 },
                    fitness: 0.0 }
     }

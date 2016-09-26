@@ -401,7 +401,6 @@ impl PhysicsWorld
 
                 let mut n_pos = object_1.position;
                 n_pos.translation = object_1.data.initial_pos.get();
-
                 corrections.push((object_1.uid, n_pos));
 
                 let mut n_pos_2 = object_2.position;
