@@ -4,11 +4,12 @@ version = "0.1.0"
 authors = ["Ricardo Sisnett <sisnett@polyminis.com>"]
 
 [dependencies]
-rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git", branch = "mutable_individuals" }
-snowflake = "^1.2.0"
+rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git", branch = "context_ga_individual"}
+
 log = "0.3.6"
 ncollide = "0.10.0"
 nalgebra = "0.9.0"
+rustc-serialize = "0.3"
 
 [dev-dependencies]
 env_logger = "0.3.2"

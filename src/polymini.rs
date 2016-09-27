@@ -2,6 +2,7 @@ use ::control::*;
 use ::genetics::*;
 use ::morphology::*;
 use ::physics::*;
+use ::serialization::*;
 use ::uuid::*;
 
 use std::any::Any;
@@ -14,7 +15,7 @@ pub struct Statistics
 
 pub struct Polymini
 {
-    uuid: usize,
+    uuid: PUUID,
 
     morph: Morphology,
     control: Control,
@@ -65,7 +66,7 @@ impl Polymini
         self.physics.act_on(actions, phys_world);
     }
 
-    pub fn get_id(&self) -> usize
+    pub fn get_id(&self) -> PUUID 
     {
         self.uuid
     }
@@ -91,16 +92,43 @@ impl Polymini
     }
 }
 
+
+// Polymini Serializable
+//
+impl Serializable for Polymini
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("id".to_string(), self.get_id().to_json());
+        json_obj.insert("physics".to_string(), self.get_physics().serialize(ctx));
+        json_obj.insert("morphology".to_string(), self.get_morphology().serialize(ctx));
+        Json::Object(json_obj)
+    }
+}
+
+
+// GA Individual
+//
 impl PolyminiGAIndividual for Polymini
 {
-    fn crossover(&self, other: &Polymini, random_ctx: &mut PolyminiRandomCtx) -> Box<Polymini>
+    fn crossover(&self, other: &Polymini, ctx: &mut Any) -> Box<Polymini>
     {
-        let new_morphology = self.get_morphology().crossover(&other.get_morphology(), random_ctx);
-        let new_control = self.get_control().crossover(&other.get_control(), random_ctx);
-
-        Box::new(Polymini::new(new_morphology, new_control))
+        match ctx.downcast_mut::<PolyminiRandomCtx>()
+        {
+            Some(random_ctx) =>
+            {
+                let new_morphology = self.get_morphology().crossover(&other.get_morphology(), random_ctx);
+                let new_control = self.get_control().crossover(&other.get_control(), random_ctx);
+                Box::new(Polymini::new(new_morphology, new_control))
+            },
+            None =>
+            {
+                panic!("");
+            }
+        }
     }
-    fn mutate(&mut self, _:f32, _: &mut PolyminiRandomCtx)
+    fn mutate(&mut self, _:f32, _: &mut Any)
     {
         // Structural mutation should happen first
         //   morphology.mutate

@@ -13,6 +13,8 @@ pub mod physics;
 #[allow(dead_code)]
 pub mod polymini;
 #[allow(dead_code)]
+pub mod serialization;
+#[allow(dead_code)]
 pub mod species;
 #[allow(dead_code)]
 pub mod types;
