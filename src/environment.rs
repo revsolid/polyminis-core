@@ -242,8 +242,5 @@ mod test
         {
             s.step();
         }
-        assert_eq!(0,1);
     }
-
-
 }
