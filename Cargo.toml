@@ -6,7 +6,7 @@ authors = ["Ricardo Sisnett <sisnett@polyminis.com>"]
 [dependencies]
 
 rust-monster = { git = "https://github.com/mrjackinc/rust-monster.git", branch = "context_ga_individual"}
-silinapse =  { git = "https://github.com/mrjackinc/silinapse.git" }
+silinapse =  { git = "https://github.com/mrjackinc/silinapse.git", branch = "fixup_and_necro" }
 
 log = "0.3.6"
 ncollide = "0.10.0"

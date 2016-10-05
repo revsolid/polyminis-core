@@ -139,26 +139,32 @@ impl Genetics for Control
 //        }
     }
 
-    fn mutate(&self, random_ctx: &mut PolyminiRandomCtx)
+    fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx)
     {
         // 
         //
-        let layer_to_mutate = self.nn[random_ctx.gen_range(0, self.nn.len())];
+        let layers = self.nn.len();
+        let layer_to_mutate = &mut self.nn[random_ctx.gen_range(0, layers)];
 
-        let flip = random_ctx.test_value(0.5);
+        //let flip = random_ctx.test_value(0.5);
         //TODO:
-        //let flip = random_ctx.test_value(1 / layer_to_mutate.get_coeffiecients().len());
+        let flip = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
 
         // Mutate a Weight
         if flip
         {
-            let weights = layer_to_mutate.get_coefficients().clone();
-            let inx = random_ctx.gen::<usize>();
-
+            let mut weights = layer_to_mutate.get_coefficients().clone();
+            let inx = random_ctx.gen_range(0, weights.len());
+            weights[inx] = random_ctx.gen::<f32>();
+            layer_to_mutate.set_coefficients(weights);
         }
         // Mutate a Bias
         else
         {
+            let mut biases = layer_to_mutate.get_biases().clone();
+            let inx = random_ctx.gen_range(0, biases.len());
+            biases[inx] = random_ctx.gen::<f32>();
+            layer_to_mutate.set_biases(biases);
         }
         
     }

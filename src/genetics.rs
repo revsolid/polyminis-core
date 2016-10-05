@@ -16,7 +16,7 @@ pub type PolyminiPopulationIter<'a, T> = GAPopulationRawIterator<'a, T>;
 pub trait Genetics
 {
     fn crossover(&self, other: &Self, random_ctx: &mut PolyminiRandomCtx) -> Self;
-    fn mutate(&self, random_ctx: &mut PolyminiRandomCtx);
+    fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx);
 }
 
 pub struct PolyminiGeneration<T: PolyminiGAIndividual>
