@@ -15,10 +15,34 @@ pub enum MoveAction
 }
 
 pub type ActionList = Vec<Action>;
-pub type ActuatorTag = i32;
+
+#[derive(Debug, Clone, Copy)]
+pub enum ActuatorTag
+{
+    MoveHorizontal,
+    MoveVertical,
+}
+
 
 pub struct Actuator
 {
     tag: ActuatorTag,
     index: usize, 
+}
+impl Actuator
+{
+    pub fn get_action(&self, stimulus: f32) -> Action
+    {
+        match self.tag
+        {
+            ActuatorTag::MoveHorizontal =>
+            {
+                Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, stimulus))
+            },
+            ActuatorTag::MoveVertical =>
+            {
+                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, stimulus))
+            },
+        }
+    }
 }
