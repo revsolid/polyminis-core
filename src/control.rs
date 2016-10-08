@@ -17,14 +17,13 @@ pub struct Perspective
 {
     pub id: usize,
     pub pos: (f32, f32),
-    //TODO: Orientation should be an enum (?)
-    pub orientation: u8,
+    pub orientation: Direction,
     pub last_move_succeeded: bool, 
 }
 impl Perspective
 {
     pub fn new(id: usize, pos: (f32, f32),
-               orientation: u8, move_succeded: bool) -> Perspective
+               orientation: Direction, move_succeded: bool) -> Perspective
     {
         Perspective { id: id, pos: pos, orientation: orientation,
                       last_move_succeeded: move_succeded }
@@ -49,7 +48,6 @@ impl Control
 {
     pub fn new() -> Control
     {
-        // TODO: Neural Network Sizing
         Control {
                   sensor_list: vec![],
                   actuator_list: vec![],
@@ -61,7 +59,11 @@ impl Control
 
     pub fn new_from(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>) -> Control
     {
-        let in_len = sensor_list.len();
+        let mut in_len = 0;
+        for s in &sensor_list
+        {
+            in_len += s.cardinality;
+        }
         let out_len = actuator_list.len();
         let hid_len = 7;
 
@@ -87,12 +89,13 @@ impl Control
             {
                 Some(payload) =>
                 {
-                    println!("Sensed for tag {:?}: {}", sensor.tag, payload);  
+                    //TODO: Multi-input sensors (e.g. Direction + Distance)
                     self.inputs.push(*payload);
                 },
                 None =>
                 {
-                    // Error (?)
+                    // Not an Error could be that there's nothing to be 
+                    // sensed for that particular tag
                 }
             }
         }

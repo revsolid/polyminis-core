@@ -1,17 +1,57 @@
 use ::control::*;
 use ::physics::*;
+use ::polymini::*;
 use ::serialization::*;
 use ::species::*;
 use ::uuid::*;
 
-struct Environment
+
+struct StaticCollider 
 {
-    simulation: Simulation,
+    uuid: PUUID,
+    position: (f32, f32),
+    dimensions: (u8, u8),
+}
+
+const KENVIRONMENT_DIMENSIONS: (f32, f32) = (100.0, 100.0);
+pub struct Environment
+{
+    dimensions: (f32, f32),
+    physical_world: PhysicsWorld,
+    static_objects: Vec<StaticCollider>,
+}
+impl Environment
+{
+    pub fn new() -> Environment
+    {
+        Environment
+        {
+            dimensions: KENVIRONMENT_DIMENSIONS,
+            physical_world: PhysicsWorld::new(),
+            static_objects: vec![],
+        }
+    }
+
+    pub fn add_individual(&mut self, polymini: &Polymini)
+    {
+        self.physical_world.add(polymini.get_physics(), polymini.get_morphology());
+        //TODO: Add to other worlds
+    }
+
+    pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
+    {
+        let uuid = PolyminiUUIDCtx::next();
+
+        self.physical_world.add_object(uuid, position, dimensions);
+        self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
+
+        //TODO: Maybe add to other worlds
+    }
 }
 
 pub struct Simulation
 {
-    physical_world: PhysicsWorld,
+    environment: Environment,
     species: Vec<Species>,
     steps: usize,
 }
@@ -19,29 +59,31 @@ impl Simulation
 {
     pub fn new() -> Simulation
     {
-        Simulation { physical_world: PhysicsWorld::new(), species: vec![], steps: 0 } 
+        Simulation { environment: Environment::new(), species: vec![], steps: 0 } 
+    }
+
+    pub fn new_with_env(environment: Environment) -> Simulation
+    {
+        Simulation { environment: environment, species: vec![], steps: 0 } 
     }
 
     pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
     {
-        self.physical_world.add_object(PolyminiUUIDCtx::next(),
-                                       position,
-                                       dimensions);
-        //TODO: Track this object, this can be done here since the object wont move or change
+        self.environment.add_object(position, dimensions);
     }
 
     pub fn add_species(&mut self, species: Species)
     {
-        // Register all individuals in that species to the respective worlds
+        // Register all individuals with the environment that species to the respective worlds
         //
         let _ = species.get_generation().size();
         
-        // Physics Registration
+        // Environment Registration
         for ind in species.get_generation().iter()
         {
-            self.physical_world.add(ind.get_physics(), ind.get_morphology());
+            self.environment.add_individual(ind);
         }
-        self.physical_world.step();
+        self.environment.physical_world.step();
 
         // Once fully registered we add them to the list of species
         self.species.push(species);
@@ -100,7 +142,7 @@ impl Simulation
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.act_phase(&mut self.physical_world);
+                polymini.act_phase(&mut self.environment.physical_world);
             }
         }
     }
@@ -109,7 +151,7 @@ impl Simulation
         // Update environment based on the aftermath of the simulation
 
         /* Physics */
-        self.physical_world.step();
+        self.environment.physical_world.step();
 
         for s in &mut self.species
         {
@@ -117,7 +159,7 @@ impl Simulation
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.consequence_physical(&self.physical_world);
+                polymini.consequence_physical(&self.environment.physical_world);
             }
         }
         // After Physics is updated, each Polymini has data like
@@ -128,9 +170,17 @@ impl Simulation
 
         // Energy consumption
     }
-    fn sense_for(&self, _: &Perspective) -> SensoryPayload
+    fn sense_for(&self, perspective: &Perspective) -> SensoryPayload
     {
-        let sp = SensoryPayload::new();
+        let mut sp = SensoryPayload::new();
+        // Fill the basic sensors
+        sp.insert(SensorTag::PositionX, perspective.pos.0 / self.environment.dimensions.0);
+        sp.insert(SensorTag::PositionY, perspective.pos.1 / self.environment.dimensions.1);
+
+        sp.insert(SensorTag::LastMoveSucceded, if perspective.last_move_succeeded { 1.0 } else { 0.0 });
+
+        sp.insert(SensorTag::Orientation, perspective.orientation.to_float());
+
         // Go through the environment and Polyminis filling up
         // the sensory payload
         sp

@@ -11,6 +11,7 @@ pub struct Statistics
 {
     hp: i32,
     energy: i32,
+    //TODO: combat_stats: CombatStatistics
 }
 
 pub struct Polymini

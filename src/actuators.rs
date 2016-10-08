@@ -22,18 +22,11 @@ pub enum ActuatorTag
     MoveHorizontal,
     MoveVertical,
 }
-
-
-pub struct Actuator
+impl ActuatorTag
 {
-    tag: ActuatorTag,
-    index: usize, 
-}
-impl Actuator
-{
-    pub fn get_action(&self, stimulus: f32) -> Action
+    pub fn to_action(&self, stimulus: f32) -> Action
     {
-        match self.tag
+        match *self
         {
             ActuatorTag::MoveHorizontal =>
             {
@@ -44,5 +37,18 @@ impl Actuator
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, stimulus))
             },
         }
+    }
+}
+
+pub struct Actuator
+{
+    tag: ActuatorTag,
+    index: usize, 
+}
+impl Actuator
+{
+    pub fn get_action(&self, stimulus: f32) -> Action
+    {
+        self.tag.to_action(stimulus)
     }
 }

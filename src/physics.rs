@@ -228,9 +228,10 @@ impl Physics
          self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
     }
 
-    pub fn get_orientation(&self) -> u8
+    pub fn get_orientation(&self) -> Direction 
     {
-        self.orientation
+        let directions = [Direction::UP, Direction::RIGHT, Direction::DOWN, Direction::LEFT];
+        directions[self.orientation as usize]
     }
 
     pub fn get_move_succeded(&self) -> bool
