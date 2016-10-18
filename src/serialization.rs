@@ -8,20 +8,26 @@ pub use self::rustc_serialize::json::{self, Json, ToJson};
 pub type pmJsonObject = json::Object;
 pub type pmJsonArray = json::Array;
 
-enum SerializationState
+#[derive(Clone, Copy)]
+pub enum SerializationMode
 {
-    Top,
-    Object,
-    List,
+    Basic,
+    SimulationStep
 }
 pub struct SerializationCtx
 {
+    mode: SerializationMode,
 }
 impl SerializationCtx
 {
     pub fn new() -> SerializationCtx
     {
-        SerializationCtx {}
+        SerializationCtx { mode: SerializationMode::Basic }
+    }
+
+    pub fn get_mode(&self) -> SerializationMode
+    {
+        self.mode
     }
 }
 
