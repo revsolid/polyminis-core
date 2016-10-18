@@ -228,9 +228,10 @@ impl Physics
          self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
     }
 
-    pub fn get_orientation(&self) -> u8
+    pub fn get_orientation(&self) -> Direction 
     {
-        self.orientation
+        let directions = [Direction::UP, Direction::RIGHT, Direction::DOWN, Direction::LEFT];
+        directions[self.orientation as usize]
     }
 
     pub fn get_move_succeded(&self) -> bool
@@ -460,7 +461,6 @@ impl PhysicsWorld
                 let (object_1, object_2, _) = coll_data;
                 let mut n_pos = object_1.position;
                 n_pos.translation = object_1.data.initial_pos.get();
-
                 corrections.push((object_1.uid, n_pos));
 
                 let mut n_pos_2 = object_2.position;

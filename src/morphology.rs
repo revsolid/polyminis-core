@@ -420,7 +420,7 @@ impl Genetics for Morphology
         Morphology::new(chromosomes, &TranslationTable::new())
     }
 
-    fn mutate(&self, _: &mut PolyminiRandomCtx){}
+    fn mutate(&mut self, _: &mut PolyminiRandomCtx){}
 }
 impl Serializable for Morphology
 {
