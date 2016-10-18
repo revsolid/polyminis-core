@@ -461,7 +461,7 @@ impl Serializable for Morphology
             {
                 let mut json_obj = pmJsonObject::new();
                 
-                json_obj("body".to_string(), self.representations.serialize(ctx));
+                json_obj.insert("body".to_string(), self.representations.serialize(ctx));
 
 
                 let mut json_arr = pmJsonArray::new();
