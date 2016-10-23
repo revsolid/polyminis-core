@@ -455,26 +455,20 @@ impl Serializable for Morphology
 {
     fn serialize(&self,  ctx: &mut SerializationCtx) -> Json
     {
-        match ctx.get_mode()
+        let mut json_obj = pmJsonObject::new();
+        
+        json_obj.insert("body".to_string(), self.representations.serialize(ctx));
+
+
+        let mut json_arr = pmJsonArray::new();
+        for c in &self.original_chromosome
         {
-            _ =>
-            {
-                let mut json_obj = pmJsonObject::new();
-                
-                json_obj.insert("body".to_string(), self.representations.serialize(ctx));
-
-
-                let mut json_arr = pmJsonArray::new();
-                for c in &self.original_chromosome
-                {
-                    json_arr.push(c.to_json());
-                }
-                json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
-
-                Json::Object(json_obj)
-            }
+            json_arr.push(c.to_json());
         }
-     }
+        json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
+
+        Json::Object(json_obj)
+    }
 }
 
 //

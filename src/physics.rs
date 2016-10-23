@@ -307,14 +307,22 @@ impl Serializable for Physics
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("id".to_string(), self.uuid.to_json());
-        json_obj.insert("dimensions".to_string(), serialize_vector(self.ncoll_dimensions));
-        json_obj.insert("position".to_string(), self.get_pos().to_json());
-        let mut ev_arr = pmJsonArray::new();
-        for ev in &self.collisions
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            ev_arr.push(ev.serialize(ctx));
+            json_obj.insert("dimensions".to_string(), serialize_vector(self.ncoll_dimensions));
         }
-        json_obj.insert("collisions".to_string(), Json::Array(ev_arr));
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+        {
+            json_obj.insert("position".to_string(), self.get_pos().to_json());
+            let mut ev_arr = pmJsonArray::new();
+            for ev in &self.collisions
+            {
+                ev_arr.push(ev.serialize(ctx));
+            }
+            json_obj.insert("collisions".to_string(), Json::Array(ev_arr));
+        }
         Json::Object(json_obj)
     }
 }
