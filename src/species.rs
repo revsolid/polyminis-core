@@ -1,3 +1,4 @@
+use ::morphology::*;
 use ::polymini::*;
 use ::genetics::*;
 use ::serialization::*;
@@ -7,13 +8,14 @@ pub struct Species
 {
     name: String,
     ga: PolyminiGeneticAlgorithm<Polymini>,
+    translation_table: TranslationTable,
 }
 impl Species
 {
     pub fn new(pop: Vec<Polymini>) -> Species
     {
         let sp_name = format!("Species {}", PolyminiUUIDCtx::next());
-        Species { name: sp_name, ga: PolyminiGeneticAlgorithm::new(pop) }
+        Species { name: sp_name, ga: PolyminiGeneticAlgorithm::new(pop), translation_table: TranslationTable::new() }
     }
 
     pub fn get_name(&self) -> &String

@@ -75,6 +75,14 @@ impl fmt::Debug for Cell
         write!(f, "{:02X}", self.pm_trait.trait_number)
     }
 }
+impl Serializable for Cell
+{
+
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        self.pm_trait.serialize(ctx)
+    }
+}
 
 //
 //
@@ -104,6 +112,15 @@ impl Trait
             trait_number: trait_num,
             trait_type: trait_type
         }
+    }
+}
+impl Serializable for Trait
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("organelle_id".to_string(), self.trait_number.to_json());
+        Json::Object(json_obj)
     }
 }
 
@@ -219,6 +236,18 @@ impl Representation
             to_ret.insert(new_c, *p);
         }
         to_ret
+    }
+}
+impl Serializable for Representation
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        for (coord, inx) in &self.positions[0]
+        {
+            json_obj.insert(format!("{:?}", coord), self.cells[*inx].serialize(ctx));
+        }
+        Json::Object(json_obj)
     }
 }
 impl fmt::Debug for Representation 
@@ -424,20 +453,28 @@ impl Genetics for Morphology
 }
 impl Serializable for Morphology
 {
-    fn serialize(&self,  _: &mut SerializationCtx) -> Json
+    fn serialize(&self,  ctx: &mut SerializationCtx) -> Json
     {
-        let mut json_obj = pmJsonObject::new();
-        let mut json_arr = pmJsonArray::new();
-
-        for c in &self.original_chromosome
+        match ctx.get_mode()
         {
-            json_arr.push(c.to_json());
+            _ =>
+            {
+                let mut json_obj = pmJsonObject::new();
+                
+                json_obj.insert("body".to_string(), self.representations.serialize(ctx));
+
+
+                let mut json_arr = pmJsonArray::new();
+                for c in &self.original_chromosome
+                {
+                    json_arr.push(c.to_json());
+                }
+                json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
+
+                Json::Object(json_obj)
+            }
         }
-
-
-        json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
-        Json::Object(json_obj)
-    }
+     }
 }
 
 //
