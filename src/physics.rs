@@ -146,7 +146,7 @@ impl PhysicsActionAccumulator
             v = self.horizontal_impulse; 
         }
 
-        if v > 0.0
+        if v != 0.0
         {
             Action::MoveAction(MoveAction::Move(dir, v))
         }
@@ -183,8 +183,10 @@ pub struct Physics
 
     ncoll_pos: Vector2<f32>,
     orientation: u8,
+    collisions: Vec<CollisionEvent>,
+
     move_succeded: bool,
-    collisions: Vec<CollisionEvent>
+    last_action: Action,
 }
 impl Physics
 {
@@ -217,8 +219,11 @@ impl Physics
 
             ncoll_pos: nc_pos,
             orientation: orientation,
-            move_succeded: true,
             collisions: vec![],
+
+
+            move_succeded: true,
+            last_action: Action::NoAction,
         }
     }
 
@@ -272,8 +277,9 @@ impl Physics
                                                    }
                                                    accum
                                                });
-
-        physics_world.apply(self.uuid, accum.to_action());
+        
+        self.last_action = accum.to_action();
+        physics_world.apply(self.uuid, self.last_action);
     }
 
     // Update our information from the result of the simulation
@@ -322,6 +328,8 @@ impl Serializable for Physics
                 ev_arr.push(ev.serialize(ctx));
             }
             json_obj.insert("collisions".to_string(), Json::Array(ev_arr));
+
+            json_obj.insert("last_action".to_string(), self.last_action.to_json());
         }
         Json::Object(json_obj)
     }
