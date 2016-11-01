@@ -40,6 +40,12 @@ impl Serializable for Species
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("name".to_string(), self.name.to_json());
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        {
+            //Translation Table
+        }
+
         let mut pop_arr = pmJsonArray::new();
         for ind in self.ga.get_population().iter()
         {

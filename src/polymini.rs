@@ -102,8 +102,13 @@ impl Serializable for Polymini
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("id".to_string(), self.get_id().to_json());
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        {
+            json_obj.insert("morphology".to_string(), self.get_morphology().serialize(ctx));
+        }
+
         json_obj.insert("physics".to_string(), self.get_physics().serialize(ctx));
-        json_obj.insert("morphology".to_string(), self.get_morphology().serialize(ctx));
         Json::Object(json_obj)
     }
 }

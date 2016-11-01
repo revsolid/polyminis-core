@@ -194,7 +194,16 @@ impl Serializable for Simulation
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("step".to_string(), self.steps.to_json());
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+        {
+            json_obj.insert("step".to_string(), self.steps.to_json());
+        }
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        {
+        }
+
 
         let mut json_arr = pmJsonArray::new();
         for s in &self.species
@@ -202,6 +211,7 @@ impl Serializable for Simulation
             json_arr.push(s.serialize(ctx));
         }
         json_obj.insert("species".to_string(), Json::Array(json_arr));
+
         Json::Object(json_obj)
     }
 }
@@ -278,7 +288,8 @@ mod test
         for _ in 0..10 
         {
             s.step();
-            println!("{}", s.serialize(&mut SerializationCtx::new()));
+            println!("{}", s.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_STATIC |
+                                                                             PolyminiSerializationFlags::PM_SF_DYNAMIC)));
         }
     }
 

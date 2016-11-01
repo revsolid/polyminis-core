@@ -1,14 +1,36 @@
 //TODO: These sould derive Clone / Copy and others
 use ::types::*;
+use ::serialization::*;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Action
 {
     NoAction,
     MoveAction(MoveAction),
 }
 
-#[derive(Debug)]
+impl ToJson for Action
+{
+    fn to_json(&self) -> Json 
+    {
+        match (*self)
+        {
+            Action::NoAction =>
+            {
+                Json::Object(pmJsonObject::new())
+            },
+            Action::MoveAction(MoveAction::Move(d, i)) =>
+            {
+                let mut json_obj = pmJsonObject::new();
+                json_obj.insert("direction".to_string(), d.to_json());
+                json_obj.insert("impulse".to_string(), i.to_json());
+                Json::Object(json_obj)
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum MoveAction
 {
     Move(Direction, f32),
