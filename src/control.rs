@@ -1,9 +1,9 @@
 //
-// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE silinapse 
-extern crate silinapse;
+// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE tinnmann 
+extern crate tinnmann;
 
-use self::silinapse::{FeedforwardLayer, Compute};
-use self::silinapse::activations::{sigmoid, ActivationFunction};
+use self::tinnmann::{FeedforwardLayer, Compute};
+use self::tinnmann::activations::{sigmoid, ActivationFunction};
 //
 
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ impl Control
                 }
     }
 
-    pub fn new_from(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>) -> Control
+    pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
     {
         let mut in_len = 0;
         for s in &sensor_list
@@ -67,8 +67,8 @@ impl Control
         let out_len = actuator_list.len();
         let hid_len = 7;
 
-        let in_to_hidden: NNLayer = FeedforwardLayer::new(in_len,hid_len,sigmoid());
-        let hidden_to_out: NNLayer = FeedforwardLayer::new(hid_len, out_len, sigmoid());
+        let in_to_hidden: NNLayer = FeedforwardLayer::new_from(in_len,hid_len,sigmoid(),     || (in_to_hid_weight_generator.generate()));
+        let hidden_to_out: NNLayer = FeedforwardLayer::new_from(hid_len, out_len, sigmoid(), || (hid_to_out_weight_generator.generate()));
 
         Control
         {
@@ -127,10 +127,8 @@ impl Control
         vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2)),
              Action::MoveAction(MoveAction::Move(Direction::ROTATION, 1.1))]
     }
-}
-impl Genetics for Control
-{
-    fn crossover(&self, _: &Control, _: &mut PolyminiRandomCtx) -> Control
+
+    pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
         Control::new()
 //        {
@@ -142,19 +140,17 @@ impl Genetics for Control
 //        }
     }
 
-    fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx)
+    pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx)
     {
         // 
         //
         let layers = self.nn.len();
         let layer_to_mutate = &mut self.nn[random_ctx.gen_range(0, layers)];
 
-        //let flip = random_ctx.test_value(0.5);
-        //TODO:
-        let flip = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
+        let mut_bias = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
 
         // Mutate a Weight
-        if flip
+        if !mut_bias
         {
             let mut weights = layer_to_mutate.get_coefficients().clone();
             let inx = random_ctx.gen_range(0, weights.len());
@@ -170,5 +166,75 @@ impl Genetics for Control
             layer_to_mutate.set_biases(biases);
         }
         
+    }
+}
+
+
+pub trait WeightsGenerator
+{
+    fn generate(&mut self) -> f32;
+}
+
+//
+struct CrossoverWeightsGenerator
+{
+    weights_generated: usize,
+    max_weights: usize,
+    weight_values: Vec<f32>,
+    bias_values: Vec<f32>
+}
+impl CrossoverWeightsGenerator
+{
+    fn new(l1: NNLayer, l2: NNLayer) -> CrossoverWeightsGenerator
+    {
+        let mut inputs = 0;
+        let mut outputs = 0;
+        let mut w_values = vec![]; 
+        let mut b_values = vec![]; 
+        CrossoverWeightsGenerator { weights_generated: 0, max_weights: inputs*outputs + outputs, weight_values: w_values, bias_values: b_values }
+    }
+}
+
+impl WeightsGenerator for CrossoverWeightsGenerator
+{
+    fn generate(&mut self) -> f32
+    {
+        if (self.weights_generated > self.max_weights)
+        {
+            panic!("Incorrectly set Generator");
+        }
+
+        let mut to_ret = 0.0;
+        if (self.weights_generated < self.weight_values.len())
+        {
+            to_ret = self.weight_values[self.weights_generated];
+        }
+        else
+        {
+            let i = self.weights_generated - self.weight_values.len();
+            to_ret = self.bias_values[i];
+        }
+        self.weights_generated += 1;
+        to_ret 
+    }
+}
+
+//
+pub struct RandomWeightsGenerator<'a>
+{
+    rand_ctx: &'a mut PolyminiRandomCtx,
+}
+impl<'a> RandomWeightsGenerator<'a>
+{
+    pub fn new(ctx: &'a mut PolyminiRandomCtx) -> RandomWeightsGenerator
+    {
+        RandomWeightsGenerator { rand_ctx: ctx }
+    }
+}
+impl<'a> WeightsGenerator for RandomWeightsGenerator<'a>
+{
+    fn generate(&mut self) -> f32
+    {
+        self.rand_ctx.gen::<f32>()
     }
 }

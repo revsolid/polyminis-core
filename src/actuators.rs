@@ -69,6 +69,10 @@ pub struct Actuator
 }
 impl Actuator
 {
+    pub fn new(tag: ActuatorTag, index: usize) -> Actuator
+    {
+        Actuator { tag: tag, index: index }
+    }
     pub fn get_action(&self, stimulus: f32) -> Action
     {
         self.tag.to_action(stimulus)

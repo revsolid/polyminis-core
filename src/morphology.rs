@@ -2,8 +2,11 @@ use std::collections::{HashSet, HashMap};
 use std::cmp::{min, max};
 use std::fmt;
 
+use ::actuators::*;
 use ::genetics::*;
 use ::serialization::*;
+use ::sensors::*;
+use ::traits::*;
 use ::types::*;
 
 //
@@ -59,13 +62,13 @@ impl AdjacencyInfo
 pub struct Cell 
 {
     adjacency_info : AdjacencyInfo,
-    pm_trait: Trait
+    pm_trait: Trait 
 }
 impl Cell
 {
     fn new(adjacency_info: AdjacencyInfo, pm_trait: Trait) -> Cell
     {
-        Cell { adjacency_info: adjacency_info, pm_trait: pm_trait }
+        Cell { adjacency_info: adjacency_info, pm_trait: pm_trait}
     }
 }
 impl fmt::Debug for Cell
@@ -84,54 +87,19 @@ impl Serializable for Cell
     }
 }
 
-//
-//
-const TIER_ONE_CHAIN:   u8 = 0xFF;
-const TIER_TWO_CHAIN:   u8 = 0x0F;
-const TIER_THREE_CHAIN: u8 = 0x0F;
-pub enum TraitType
-{
-    SimpleTrait,
-    SensorTrait,
-    ActuatorTrait,
-    Empty
-}
-pub struct Trait
-{
-    tier: u8,
-    trait_number: u8,
-    trait_type: TraitType 
-}
-impl Trait
-{
-    fn new(tier: u8, trait_num: u8, trait_type: TraitType) -> Trait
-    {
-        Trait
-        {
-            tier: tier,
-            trait_number: trait_num,
-            trait_type: trait_type
-        }
-    }
-}
-impl Serializable for Trait
-{
-    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
-    {
-        let mut json_obj = pmJsonObject::new();
-        json_obj.insert("organelle_id".to_string(), self.trait_number.to_json());
-        Json::Object(json_obj)
-    }
-}
 
 //
 //
-pub struct TranslationTable;
+pub struct TranslationTable
+{
+    trait_table:  HashMap<(TraitTier, u8), PolyminiTrait>,
+    active:  HashMap<(TraitTier, u8), bool>,
+}
 impl TranslationTable
 {
     pub fn new() -> TranslationTable
     {
-        TranslationTable {}
+        TranslationTable { trait_table: HashMap::new(), active: HashMap::new() }
     }
     fn create_for_chromosome(&self,
                              chromosome: Chromosome) -> Cell
@@ -158,12 +126,14 @@ impl TranslationTable
         //TIER I
         let mut tier: u8 = 1;
         let mut trait_num = ( ( gp & (0xFF<<8) ) >> 8 ) as u8;
-        if trait_num == TIER_ONE_CHAIN
+
+        // Basic Tier Never Chains
+        if trait_num == TIER_ONE_TO_TWO_CHAIN
         {
             //TIER II
             tier += 1;
             trait_num = ((gp & (0xF<<4)) >> 4) as u8;
-            if trait_num == TIER_TWO_CHAIN
+            if trait_num == TIER_TWO_TO_THREE_CHAIN
             {
                 //TIER III
                 tier += 1;
@@ -171,8 +141,23 @@ impl TranslationTable
             }
         }
 
+        // TODO:
+        // Get PolyminiTrait
+        let mut polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
+        match self.trait_table.get(&(TraitTier::from(tier), trait_num))
+        {
+            Some(trait_value) =>
+            {
+                polymini_trait = *trait_value;
+            }
+            None =>
+            { 
+               // Value already initialized to a valid default 
+            }
+        }
+
         Cell::new(AdjacencyInfo::new(adj_dirs),
-                  Trait::new(tier, trait_num, TraitType::Empty))
+                  Trait::new(TraitTier::from(tier), trait_num, polymini_trait))
     }
 }
 
@@ -307,15 +292,26 @@ impl Morphology
         }
     }
 
-    pub fn new(chromosomes: Vec<Chromosome>,
+    pub fn new(chromosomes: &Vec<Chromosome>,
                translation_table: &TranslationTable) -> Morphology
     {
-        let mut cells = vec![];
         let mut original_chromosome = vec![];
         for c in chromosomes
         {
-            cells.push(translation_table.create_for_chromosome(c));
-            original_chromosome.push(c);
+            original_chromosome.push(*c);
+        }
+
+        let rep = Morphology::create_representation(chromosomes, translation_table);
+        
+        Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
+    }
+
+    fn create_representation (chromosomes: &Vec<Chromosome>, translation_table: &TranslationTable) -> Representation
+    {
+        let mut cells = vec![];
+        for c in chromosomes
+        {
+            cells.push(translation_table.create_for_chromosome(*c));
         }
 
         let mut visited: HashSet<Coord> = HashSet::new();
@@ -371,20 +367,15 @@ impl Morphology
         let w = (maxx - minx + 1) as u8;
         let h = (maxy - miny + 1) as u8;
 
-        let r1 = Representation::new(drain_pos, drain_cell,
-                                     (w, h), (minx, miny));
-        
-        Morphology { dimensions: (w, h), representations: r1, original_chromosome: original_chromosome}
+        Representation::new(drain_pos, drain_cell, (w, h), (minx, miny))
     }
 
     pub fn get_dimensions(&self) -> (u8, u8)
     {
         return self.dimensions
     }
-}
-impl Genetics for Morphology
-{
-    fn crossover(&self, other: &Morphology, random_ctx: &mut PolyminiRandomCtx) -> Morphology
+
+    pub fn crossover(&self, other: &Morphology, random_ctx: &mut PolyminiRandomCtx) -> Morphology
     {
         let mut chromosomes = vec![];
 
@@ -446,10 +437,61 @@ impl Genetics for Morphology
                  other.original_chromosome[cross_point_chromosome_2]);
         println!("{}", link_byte);
 
-        Morphology::new(chromosomes, &TranslationTable::new())
+        Morphology::new(&chromosomes, &TranslationTable::new())
     }
 
-    fn mutate(&mut self, _: &mut PolyminiRandomCtx){}
+    pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)
+    {
+        let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
+        let allele_to_mutate = random_ctx.gen_range(0, 4);
+
+        self.original_chromosome[chromosome_to_mutate][allele_to_mutate] = random_ctx.gen::<u8>();
+
+        // After mutating the chromosome is possible the whole morphology representation has
+        // changed
+        self.representations = Morphology::create_representation(&self.original_chromosome, table);
+        self.dimensions = self.representations.dimensions;
+    }
+
+
+    pub fn get_actuator_list(&self) -> Vec<Actuator>
+    {
+
+        let mut actuators = vec![];
+        for (i, c) in self.representations.cells.iter().enumerate()
+        {
+            match c.pm_trait.pm_trait 
+            {
+                PolyminiTrait::PolyminiActuator(t) =>
+                {
+                    actuators.push(Actuator::new(t, i));
+                },
+                _ =>
+                {
+                }
+            }
+        }
+        actuators
+    }
+
+    pub fn get_sensor_list(&self) -> Vec<Sensor>
+    {
+        let mut sensors = vec![];
+        for (i, c) in self.representations.cells.iter().enumerate()
+        {
+            match c.pm_trait.pm_trait 
+            {
+                PolyminiTrait::PolyminiSensor(t) =>
+                {
+                    sensors.push(Sensor::new(t, i));
+                },
+                _ =>
+                {
+                }
+            }
+        }
+        sensors
+    }
 }
 impl Serializable for Morphology
 {
@@ -514,7 +556,7 @@ mod test
                                [0,  0, 0xBE, 0xEF],
                                [0,  0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(chromosomes, &TranslationTable::new());
+        let morph = Morphology::new(&chromosomes, &TranslationTable::new());
 
         assert_eq!((3, 2), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
@@ -532,7 +574,7 @@ mod test
                                [0,  0, 0xBE, 0xEF],
                                [0,  0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(chromosomes, &TranslationTable::new());
+        let morph = Morphology::new(&chromosomes, &TranslationTable::new());
         assert_eq!((3, 1), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
         println!("{:?}", morph);
@@ -550,8 +592,8 @@ mod test
                       [0,    0, 0xBE, 0xEF],
                       [0,    0, 0xDB, 0xAD]];
 
-        let morph = Morphology::new(c1, &TranslationTable::new());
-        let morph_2 = Morphology::new(c2, &TranslationTable::new());
+        let morph = Morphology::new(&c1, &TranslationTable::new());
+        let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
         let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
 
@@ -570,12 +612,31 @@ mod test
                       [0,    0, 0x00, 0x00],
                       [0,    0, 0x00, 0x00]];
 
-        let morph = Morphology::new(c1, &TranslationTable::new());
-        let morph_2 = Morphology::new(c2, &TranslationTable::new());
+        let morph = Morphology::new(&c1, &TranslationTable::new());
+        let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
         let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
 
         println!("{:?}", child);
     }
+
+    #[test]
+    fn test_morphology_mutate()
+    {
+        let c1 = vec![[0, 0x09, 0x6A, 0xAD],
+                      [0, 0x0B, 0xFF, 0xFF],
+                      [0,    0, 0xFF, 0xFF],
+                      [0,    0, 0xFF, 0xFF]];
+        let c2 = vec![[0, 0x0C, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00],
+                      [0,    0, 0x00, 0x00]];
+
+        let mut morph = Morphology::new(&c1, &TranslationTable::new());
+        println!("{:?}", morph);
+        morph.mutate(&mut PolyminiRandomCtx::from_seed([5,7,8,9], "".to_string()), &TranslationTable::new());
+        println!("{:?}", morph);
+    }
+
 
 }

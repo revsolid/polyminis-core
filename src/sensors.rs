@@ -19,4 +19,9 @@ pub struct Sensor
 }
 impl Sensor
 {
+    pub fn new(tag: SensorTag, index: usize) -> Sensor
+    {
+        //TODO: Cardinality
+        Sensor { tag: tag, cardinality: 1, index: index }
+    }
 }

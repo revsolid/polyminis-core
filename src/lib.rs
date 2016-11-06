@@ -19,6 +19,8 @@ pub mod serialization;
 #[allow(dead_code)]
 pub mod species;
 #[allow(dead_code)]
+pub mod traits;
+#[allow(dead_code)]
 pub mod types;
 #[allow(dead_code)]
 pub mod uuid;

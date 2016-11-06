@@ -246,8 +246,7 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
 
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
@@ -262,8 +261,7 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
         for _ in 0..10 
@@ -280,8 +278,7 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
         let mut s = Simulation::new();
         s.add_species(Species::new(vec![p1]));
         s.add_object((10.0, 2.0), (1, 1));
@@ -306,10 +303,8 @@ mod test
                                 [0,    0, 0xBE, 0xEF],
                                 [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
-        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(chromosomes2, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
 
         println!("{:?}", p1.get_morphology());
         println!(">> {:?}", p1.get_physics().get_pos());

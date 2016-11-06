@@ -29,11 +29,21 @@ pub struct Polymini
 }
 impl Polymini
 {
-    pub fn new(morphology: Morphology, control: Control) -> Polymini
+    pub fn new(morphology: Morphology) -> Polymini
     {
-        Polymini::new_at((0.0, 0.0), morphology, control)
+        Polymini::new_at((0.0, 0.0), morphology)
     }
-    pub fn new_at(pos: (f32, f32), morphology: Morphology, control: Control) -> Polymini
+    pub fn new_at(pos: (f32, f32), morphology: Morphology) -> Polymini
+    {
+        //Build up the control
+        // TODO: Random Context :(
+        let control = Control::new_from(morphology.get_sensor_list(), morphology.get_actuator_list(),
+                                        &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())),
+                                        &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())));
+         
+        Polymini::new_with_control(pos, morphology, control)
+    }
+    fn new_with_control(pos: (f32, f32), morphology: Morphology, control: Control) -> Polymini
     {
         let uuid = PolyminiUUIDCtx::next();
         let dim = morphology.get_dimensions();
@@ -43,6 +53,7 @@ impl Polymini
                    physics: Physics::new(uuid, dim, pos.0, pos.1, 0),
                    statistics: Statistics { hp: 0, energy: 0 },
                    fitness: 0.0 }
+
     }
     pub fn get_perspective(&self) -> Perspective
     {
@@ -125,21 +136,32 @@ impl PolyminiGAIndividual for Polymini
             Some(random_ctx) =>
             {
                 let new_morphology = self.get_morphology().crossover(&other.get_morphology(), random_ctx);
-                let new_control = self.get_control().crossover(&other.get_control(), random_ctx);
-                Box::new(Polymini::new(new_morphology, new_control))
+                let new_control = self.get_control().crossover(&other.get_control(), random_ctx, new_morphology.get_sensor_list(),
+                                                               new_morphology.get_actuator_list());
+                Box::new(Polymini::new_with_control((0.0, 0.0), new_morphology, new_control))
             },
             None =>
             {
-                panic!("");
+                panic!("Invalid Crossover Context");
             }
         }
     }
-    fn mutate(&mut self, _:f32, _: &mut Any)
+    fn mutate(&mut self, _:f32, ctx: &mut Any)
     {
-        // Structural mutation should happen first
-        //   morphology.mutate
-        // Brain Mutation is self contained
-        //   control.mutate
+        match ctx.downcast_mut::<PolyminiRandomCtx>()
+        {
+            Some (random_ctx) =>
+            {
+            // Structural mutation should happen first
+                self.morph.mutate(random_ctx, &TranslationTable::new());
+            // Brain Mutation is self contained
+               self.control.mutate(random_ctx);
+            },
+            None =>
+            {
+                panic!("Invalid Mutation Context");
+            }
+        }
         // restart self (?)
     }
     fn evaluate(&mut self, _: &mut Any)
