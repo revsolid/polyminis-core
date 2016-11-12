@@ -37,7 +37,7 @@ impl Polymini
     {
         //Build up the control
         // TODO: Random Context :(
-        let control = Control::new_from(morphology.get_sensor_list(), morphology.get_actuator_list(),
+        let control = Control::new_from(morphology.get_sensor_list(), morphology.get_actuator_list(), 7,
                                         &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())),
                                         &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())));
          
