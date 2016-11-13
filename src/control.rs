@@ -62,11 +62,7 @@ impl Control
 
     pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize, in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
     {
-        let mut in_len = 0;
-        for s in &sensor_list
-        {
-            in_len += s.cardinality;
-        }
+        let in_len = Sensor::get_total_cardinality(&sensor_list);
         let out_len = actuator_list.len();
 
         let in_to_hidden:  NNLayer = FeedforwardLayer::new_from(in_len, hidden_layer_size, sigmoid(), ||(in_to_hid_weight_generator.generate()));
@@ -134,39 +130,73 @@ impl Control
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
 
-        let hid_len = 7;
-        let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_sensor_list.len(), hid_len);
+        let hid_len = self.hidden_layer_size;
+        let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);
+        let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_in_size, hid_len);
         let mut hid_to_out_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[1], &other.nn[1], self.hidden_layer_size, self.outputs.len(), hid_len, new_actuator_list.len());
         
         Control::new_from(new_sensor_list, new_actuator_list, hid_len, &mut in_to_hid_generator, &mut hid_to_out_generator)
     }
 
-    pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx)
+    pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>,
+                  new_actuator_list: Vec<Actuator>)
     {
-        // 
-        //
-        let layers = self.nn.len();
-        let layer_to_mutate = &mut self.nn[random_ctx.gen_range(0, layers)];
-
-        let mut_bias = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
-
-        // Mutate a Weight
-        if !mut_bias
-        {
-            let mut weights = layer_to_mutate.get_coefficients().clone();
-            let inx = random_ctx.gen_range(0, weights.len());
-            weights[inx] = random_ctx.gen::<f32>();
-            layer_to_mutate.set_coefficients(weights);
-        }
-        // Mutate a Bias
-        else
-        {
-            let mut biases = layer_to_mutate.get_biases().clone();
-            let inx = random_ctx.gen_range(0, biases.len());
-            biases[inx] = random_ctx.gen::<f32>();
-            layer_to_mutate.set_biases(biases);
-        }
+        //TODO: Mutate Hid layer size (?) 
         
+
+        let new_in_size =  Sensor::get_total_cardinality(&new_sensor_list);
+        let new_out_size = new_actuator_list.len();
+
+        let old_in_size =  self.inputs.len();
+        let old_out_size = self.outputs.len();
+        if ( new_in_size != old_in_size ||
+             new_out_size != old_out_size) /* Brain Changed */
+        {
+            if (new_in_size != old_in_size)
+            {
+                let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[0],
+                                                                 old_in_size, self.hidden_layer_size,
+                                                                 new_in_size, self.hidden_layer_size);
+                self.nn[0] = FeedforwardLayer::new_from(new_in_size, self.hidden_layer_size, sigmoid(),
+                                                        || (weight_gen.generate()));
+
+            }
+            
+            if (new_out_size != old_out_size)
+            {
+                let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[1],
+                                                                 self.hidden_layer_size, old_out_size,
+                                                                 self.hidden_layer_size, new_out_size);
+
+                self.nn[1] = FeedforwardLayer::new_from(self.hidden_layer_size, new_out_size, sigmoid(),
+                                                        || (weight_gen.generate()));
+            }
+        }
+        else  /* Structure of Brain unchanged */
+        {
+            //
+            let layers = self.nn.len();
+            let layer_to_mutate = &mut self.nn[random_ctx.gen_range(0, layers)];
+
+            let mut_bias = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
+
+            // Mutate a Weight
+            if !mut_bias
+            {
+                let mut weights = layer_to_mutate.get_coefficients().clone();
+                let inx = random_ctx.gen_range(0, weights.len());
+                weights[inx] = random_ctx.gen::<f32>();
+                layer_to_mutate.set_coefficients(weights);
+            }
+            // Mutate a Bias
+            else
+            {
+                let mut biases = layer_to_mutate.get_biases().clone();
+                let inx = random_ctx.gen_range(0, biases.len());
+                biases[inx] = random_ctx.gen::<f32>();
+                layer_to_mutate.set_biases(biases);
+            }
+        } 
     }
 }
 
@@ -211,41 +241,73 @@ pub struct MutateWeightsGenerator<'a>
 }
 impl<'a> MutateWeightsGenerator<'a>
 {
-    pub fn new(ctx: &'a mut PolyminiRandomCtx) -> MutateWeightsGenerator
+    pub fn new(ctx: &'a mut PolyminiRandomCtx, l1: &NNLayer, old_in_size:usize, old_out_size:usize,
+               new_in_size:usize, new_out_size:usize) -> MutateWeightsGenerator<'a>
     {
-        //TODO: Get weight_Values and bias_values from somewhere
-        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false, weights_generated: 0, max_weights: 0, weight_values: vec![], bias_values: vec![] }
+        let mut b_values = vec![];
+        let mut w_values = vec![];
+        let mut nn_inx = 0;
+
+        for i in 0..new_in_size
+        {
+            for j in 0..new_out_size
+            {
+                let v;
+                if i < old_in_size && j < old_out_size
+                {
+                    v = l1.get_coefficients()[nn_inx];
+                    nn_inx += 1;
+                }
+                else
+                {
+                    v = ctx.gen_range(0.0, 1.0);
+                }
+                w_values.push(v);
+            }
+        }
+
+        b_values = l1.get_biases().clone();
+
+        while b_values.len() < new_out_size
+        {
+            b_values.push(ctx.gen_range(0.0, 1.0));
+        }
+
+        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false, weights_generated: 0, max_weights: new_in_size*new_out_size + new_out_size,
+                                 weight_values: w_values, bias_values: b_values }
     }
 }
 impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
 {
     fn generate(&mut self) -> f32
     {
-        if (self.weights_generated >= self.max_weights)
+        let mut to_ret;
+        if (self.weights_generated > self.max_weights)
         {
+            println!("GENED:{} MAX:{}", self.weights_generated, self.max_weights);
             panic!("Incorrectly set Generator");
         }
 
-        let mut to_ret = 0.0;
-        if (self.weights_generated < self.weight_values.len())
+        if self.weights_generated < self.weight_values.len()
         {
             to_ret = self.weight_values[self.weights_generated];
         }
-        else
+        else 
         {
             let i = self.weights_generated - self.weight_values.len();
             to_ret = self.bias_values[i];
         }
-        self.weights_generated += 1;
 
 
         if !self.has_mutated
         {
-            //if ( should mutate)
+            if (self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32)
             {
                 to_ret = self.rand_ctx.gen_range(0.0, 1.0);
+                self.has_mutated = true;
             }
         }
+        self.weights_generated += 1;
         to_ret 
     }
 }
@@ -453,5 +515,166 @@ mod test
     fn test_controlcrossover_3()
     {
         test_control_crossover_master(3, 2, 2, 5, 1, 4);
+    }
+
+
+    #[test]
+    fn test_control_mutate_1()
+    {
+        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
+                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
+                           Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
+
+        let mut in_to_hid_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3, 1.4, 1.5,
+                           2.1, 2.2, 2.3, 2.4, 2.5,
+                           3.1, 3.2, 3.3, 3.4, 3.5,
+                           4.1, 4.2, 4.3, 4.4, 4.5],
+            b_values: vec![8.1, 8.2, 8.3, 8.4, 8.5],
+            weights_generated: 0,
+        };
+
+        let mut hid_to_out_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3,
+                           2.1, 2.2, 2.3, 
+                           3.1, 3.2, 3.3, 
+                           4.1, 4.2, 4.3, 
+                           5.1, 5.2, 5.3],
+            b_values: vec![8.1, 8.2, 8.3],
+            weights_generated: 0,
+        };
+
+        let mut c1 = Control::new_from(s_list.clone(), a_list.clone(), 5, &mut in_to_hid_generator, &mut hid_to_out_generator);
+        c1.mutate(&mut PolyminiRandomCtx::new_unseeded("Mutate Tests".to_string()), s_list.clone(), a_list.clone());
+
+        for c in c1.nn[0].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[0].get_biases()
+        {
+            println!("{}", b);
+        }
+
+
+        for c in c1.nn[1].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[1].get_biases()
+        {
+            println!("{}", b);
+        }
+    }
+
+    #[test]
+    fn test_control_mutate_2()
+    {
+        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
+                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let mut s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
+                               Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
+
+        let mut in_to_hid_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3, 1.4, 1.5,
+                           2.1, 2.2, 2.3, 2.4, 2.5,
+                           3.1, 3.2, 3.3, 3.4, 3.5,
+                           4.1, 4.2, 4.3, 4.4, 4.5],
+            b_values: vec![8.1, 8.2, 8.3, 8.4, 8.5],
+            weights_generated: 0,
+        };
+
+        let mut hid_to_out_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3,
+                           2.1, 2.2, 2.3, 
+                           3.1, 3.2, 3.3, 
+                           4.1, 4.2, 4.3, 
+                           5.1, 5.2, 5.3],
+            b_values: vec![8.1, 8.2, 8.3],
+            weights_generated: 0,
+        };
+
+
+        let mut c1 = Control::new_from(s_list.clone(), a_list.clone(), 5, &mut in_to_hid_generator, &mut hid_to_out_generator);
+        s_list.push(Sensor::new(SensorTag::PositionX, 4));
+        c1.mutate(&mut PolyminiRandomCtx::new_unseeded("Mutate Tests".to_string()), s_list.clone(), a_list.clone());
+
+        for c in c1.nn[0].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[0].get_biases()
+        {
+            println!("{}", b);
+        }
+
+
+        for c in c1.nn[1].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[1].get_biases()
+        {
+            println!("{}", b);
+        }
+    }
+
+    #[test]
+    fn test_control_mutate_3()
+    {
+        let mut a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
+                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
+                               Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
+
+        let mut in_to_hid_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3, 1.4, 1.5,
+                           2.1, 2.2, 2.3, 2.4, 2.5,
+                           3.1, 3.2, 3.3, 3.4, 3.5,
+                           4.1, 4.2, 4.3, 4.4, 4.5],
+            b_values: vec![8.1, 8.2, 8.3, 8.4, 8.5],
+            weights_generated: 0,
+        };
+
+        let mut hid_to_out_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3,
+                           2.1, 2.2, 2.3, 
+                           3.1, 3.2, 3.3, 
+                           4.1, 4.2, 4.3, 
+                           5.1, 5.2, 5.3],
+            b_values: vec![8.1, 8.2, 8.3],
+            weights_generated: 0,
+        };
+
+
+        let mut c1 = Control::new_from(s_list.clone(), a_list.clone(), 5, &mut in_to_hid_generator, &mut hid_to_out_generator);
+        a_list.push(Actuator::new(ActuatorTag::MoveVertical, 3));
+        c1.mutate(&mut PolyminiRandomCtx::new_unseeded("Mutate Tests".to_string()), s_list.clone(), a_list.clone());
+
+        for c in c1.nn[0].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[0].get_biases()
+        {
+            println!("{}", b);
+        }
+
+
+        for c in c1.nn[1].get_coefficients()
+        {
+            println!("{}", c);
+        }
+        for b in c1.nn[1].get_biases()
+        {
+            println!("{}", b);
+        }
     }
 }

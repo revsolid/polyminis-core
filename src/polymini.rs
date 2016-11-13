@@ -154,8 +154,7 @@ impl PolyminiGAIndividual for Polymini
             {
             // Structural mutation should happen first
                 self.morph.mutate(random_ctx, &TranslationTable::new());
-            // Brain Mutation is self contained
-               self.control.mutate(random_ctx);
+                self.control.mutate(random_ctx, self.morph.get_sensor_list(), self.morph.get_actuator_list());
             },
             None =>
             {

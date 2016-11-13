@@ -30,7 +30,7 @@ impl ToJson for Action
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum MoveAction
 {
     Move(Direction, f32),
@@ -38,7 +38,7 @@ pub enum MoveAction
 
 pub type ActionList = Vec<Action>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum ActuatorTag
 {
     MoveHorizontal,
@@ -62,6 +62,7 @@ impl ActuatorTag
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Actuator
 {
     tag: ActuatorTag,
