@@ -11,7 +11,6 @@ use ::types::*;
 
 //
 //
-pub type Coord = (i32, i32);
 pub type Chromosome = [u8; 4];
 
 
@@ -99,8 +98,15 @@ impl TranslationTable
 {
     pub fn new() -> TranslationTable
     {
-        TranslationTable { trait_table: HashMap::new(), active: HashMap::new() }
+        TranslationTable::new_from(HashMap::new(), HashMap::new())
     }
+
+    pub fn new_from(trait_table: HashMap<(TraitTier, u8), PolyminiTrait>, 
+                    active:  HashMap<(TraitTier, u8), bool>) -> TranslationTable
+    {
+        TranslationTable { trait_table: trait_table, active: active }
+    }
+    
     fn create_for_chromosome(&self,
                              chromosome: Chromosome) -> Cell
     {
@@ -122,7 +128,7 @@ impl TranslationTable
             }
         }
 
-        //TODO: Make this configurable
+        //TODO: Make this configurable - Using a list of Transform + Chain could work
         //TIER I
         let mut tier: u8 = 1;
         let mut trait_num = ( ( gp & (0xFF<<8) ) >> 8 ) as u8;
@@ -152,12 +158,20 @@ impl TranslationTable
             }
             None =>
             { 
-               // Value already initialized to a valid default 
+               // Value already initialized to a valid default above 
             }
         }
 
         Cell::new(AdjacencyInfo::new(adj_dirs),
                   Trait::new(TraitTier::from(tier), trait_num, polymini_trait))
+    }
+}
+impl Deserializable for TranslationTable
+{
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<TranslationTable>
+    {
+        // Translation Table isn't anything but a layer to go from 
+        Some(TranslationTable::new())
     }
 }
 
@@ -458,19 +472,22 @@ impl Morphology
     {
 
         let mut actuators = vec![];
-        for (i, c) in self.representations.cells.iter().enumerate()
+
+        for (k, v) in &self.representations.positions[0]
         {
+            let c = &self.representations.cells[*v];
             match c.pm_trait.pm_trait 
             {
                 PolyminiTrait::PolyminiActuator(t) =>
                 {
-                    actuators.push(Actuator::new(t, i));
+                    actuators.push(Actuator::new(t, 0,  *k));
                 },
                 _ =>
                 {
                 }
             }
         }
+
         actuators
     }
 

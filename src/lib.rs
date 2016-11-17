@@ -7,6 +7,8 @@ pub mod environment;
 #[allow(dead_code)]
 pub mod genetics;
 #[allow(dead_code)]
+pub mod instincts;
+#[allow(dead_code)]
 pub mod morphology;
 #[allow(dead_code)]
 pub mod physics;

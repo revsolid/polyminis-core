@@ -3,13 +3,12 @@
 extern crate tinnmann;
 
 use self::tinnmann::{FeedforwardLayer, Compute};
-use self::tinnmann::activations::{sigmoid, ActivationFunction};
+use self::tinnmann::activations::{sigmoid};
 //
-
-use std::collections::HashMap;
 
 pub use ::actuators::*;
 pub use ::sensors::*;
+
 use ::genetics::*;
 use ::types::*;
 
@@ -123,8 +122,8 @@ impl Control
         action_list;
 
         // TODO: TOTALLY temporary implementation used to test
-        vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2)),
-             Action::MoveAction(MoveAction::Move(Direction::ROTATION, 1.1))]
+        vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))]
     }
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
@@ -149,10 +148,10 @@ impl Control
 
         let old_in_size =  self.inputs.len();
         let old_out_size = self.outputs.len();
-        if ( new_in_size != old_in_size ||
-             new_out_size != old_out_size) /* Brain Changed */
+        if  new_in_size  != old_in_size ||
+            new_out_size != old_out_size /* Brain Changed */
         {
-            if (new_in_size != old_in_size)
+            if new_in_size != old_in_size
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[0],
                                                                  old_in_size, self.hidden_layer_size,
@@ -162,7 +161,7 @@ impl Control
 
             }
             
-            if (new_out_size != old_out_size)
+            if new_out_size != old_out_size
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[1],
                                                                  self.hidden_layer_size, old_out_size,
@@ -244,7 +243,7 @@ impl<'a> MutateWeightsGenerator<'a>
     pub fn new(ctx: &'a mut PolyminiRandomCtx, l1: &NNLayer, old_in_size:usize, old_out_size:usize,
                new_in_size:usize, new_out_size:usize) -> MutateWeightsGenerator<'a>
     {
-        let mut b_values = vec![];
+        let mut b_values;
         let mut w_values = vec![];
         let mut nn_inx = 0;
 
@@ -282,7 +281,7 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
     fn generate(&mut self) -> f32
     {
         let mut to_ret;
-        if (self.weights_generated > self.max_weights)
+        if self.weights_generated > self.max_weights
         {
             println!("GENED:{} MAX:{}", self.weights_generated, self.max_weights);
             panic!("Incorrectly set Generator");
@@ -301,7 +300,7 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
 
         if !self.has_mutated
         {
-            if (self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32)
+            if self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32
             {
                 to_ret = self.rand_ctx.gen_range(0.0, 1.0);
                 self.has_mutated = true;
@@ -381,13 +380,13 @@ impl WeightsGenerator for CrossoverWeightsGenerator
 {
     fn generate(&mut self) -> f32
     {
-        if (self.weights_generated >= self.max_weights)
+        if self.weights_generated >= self.max_weights
         {
             panic!("Incorrectly set Generator");
         }
 
-        let mut to_ret = 0.0;
-        if (self.weights_generated < self.weight_values.len())
+        let mut to_ret;
+        if self.weights_generated < self.weight_values.len()
         {
             to_ret = self.weight_values[self.weights_generated];
         }
@@ -426,7 +425,7 @@ mod test
         {
             let to_ret;
 
-            if (self.weights_generated < self.w_values.len())
+            if self.weights_generated < self.w_values.len()
             {
                 to_ret = self.w_values[self.weights_generated];
             }
@@ -521,8 +520,8 @@ mod test
     #[test]
     fn test_control_mutate_1()
     {
-        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
-                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0, (0, 0)), Actuator::new(ActuatorTag::MoveVertical, 1, (0, 0)),
+                           Actuator::new(ActuatorTag::MoveVertical, 2, (0, 0))];
         let s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
                            Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
 
@@ -573,8 +572,8 @@ mod test
     #[test]
     fn test_control_mutate_2()
     {
-        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
-                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0, (0, 0)), Actuator::new(ActuatorTag::MoveVertical, 1, (0, 0)),
+                           Actuator::new(ActuatorTag::MoveVertical, 2, (0, 0))];
         let mut s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
                                Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
 
@@ -627,8 +626,8 @@ mod test
     #[test]
     fn test_control_mutate_3()
     {
-        let mut a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0), Actuator::new(ActuatorTag::MoveVertical, 1),
-                           Actuator::new(ActuatorTag::MoveVertical, 2)];
+        let mut a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0, (0, 0)), Actuator::new(ActuatorTag::MoveVertical, 1, (0, 0)),
+                           Actuator::new(ActuatorTag::MoveVertical, 2, (0, 0))];
         let s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
                                Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
 
@@ -655,7 +654,7 @@ mod test
 
 
         let mut c1 = Control::new_from(s_list.clone(), a_list.clone(), 5, &mut in_to_hid_generator, &mut hid_to_out_generator);
-        a_list.push(Actuator::new(ActuatorTag::MoveVertical, 3));
+        a_list.push(Actuator::new(ActuatorTag::MoveVertical, 3, (0,0)));
         c1.mutate(&mut PolyminiRandomCtx::new_unseeded("Mutate Tests".to_string()), s_list.clone(), a_list.clone());
 
         for c in c1.nn[0].get_coefficients()

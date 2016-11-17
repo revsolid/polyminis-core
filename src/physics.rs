@@ -80,7 +80,7 @@ impl PolyminiPhysicsData
     }
 }
 
-struct PhysicsActionAccumulator
+pub struct PhysicsActionAccumulator
 {
     vertical_impulse: f32,
     horizontal_impulse: f32,
@@ -98,7 +98,7 @@ impl PhysicsActionAccumulator
         }
     }
 
-    fn accumulate(&mut self, dir: Direction, impulse: f32)
+    fn accumulate(&mut self, dir: Direction, impulse: f32, torque: f32)
     {
         match dir
         {
@@ -112,10 +112,12 @@ impl PhysicsActionAccumulator
             },
             Direction::ROTATION =>
             {
-                self.spin += impulse
+                //self.spin += impulse;
             }
             _ => panic!("Incorrect direction for impulse {:?}", dir)
-        } 
+        }
+
+        self.spin += torque;
     }
 
     fn to_action(&self) -> Action
@@ -130,12 +132,8 @@ impl PhysicsActionAccumulator
         let mut dir = Direction::VERTICAL;
         let mut v = 0.0;
 
-        if max == spin
-        {
-            dir = Direction::ROTATION;
-            v = self.spin; 
-        } 
-        else if max == vertical_impulse
+        
+        if max == vertical_impulse
         {
             dir = Direction::VERTICAL;
             v = self.vertical_impulse; 
@@ -145,10 +143,15 @@ impl PhysicsActionAccumulator
             dir = Direction::HORIZONTAL;
             v = self.horizontal_impulse; 
         }
+        else if max == spin
+        {
+            dir = Direction::ROTATION;
+            v = self.spin; 
+        }
 
         if v != 0.0
         {
-            Action::MoveAction(MoveAction::Move(dir, v))
+            Action::MoveAction(MoveAction::Move(dir, v, 0.0))
         }
         else
         {
@@ -245,39 +248,26 @@ impl Physics
     }
 
     // Attempt to add rotation / translation to our physics object
-    pub fn act_on(&mut self, actions: ActionList, physics_world: &mut PhysicsWorld)
+    pub fn act_on(&mut self, actions: &ActionList, physics_world: &mut PhysicsWorld)
     {
         // Only move actions are relevant to us
-        let p_actions = actions.into_iter().filter(
-            |x| match x
-            {
-                &Action::MoveAction(_) =>
-                {
-                        true
-                },
-                _ =>
-                {
-                        false
-                }
-            });
-
-        let accum = p_actions.into_iter().fold(PhysicsActionAccumulator::new(),
-                                               |mut accum, action| 
+        let accum = actions.iter().fold(PhysicsActionAccumulator::new(),
+                                       |mut accum, action|
+                                       {
+                                           match action
+                                           {
+                                               &Action::MoveAction(MoveAction::Move(d, i, t)) =>
                                                {
-                                                   match action
-                                                   {
-                                                       Action::MoveAction(MoveAction::Move(d, i)) =>
-                                                       {
-                                                           accum.accumulate(d, i);
-                                                       },
-                                                       _ =>
-                                                       {
-                                                           panic!("Filter must be broken");
-                                                       }
-                                                   }
-                                                   accum
-                                               });
-        
+                                                   accum.accumulate(d, i, t);
+                                               },
+                                               _ =>
+                                               {
+                                                   //Ignore
+                                               }
+                                           }
+                                           accum
+                                       });
+
         self.last_action = accum.to_action();
         physics_world.apply(self.uuid, self.last_action);
     }
@@ -419,7 +409,7 @@ impl PhysicsWorld
             p_obj.data.initial_pos.set(p_obj.position.translation);
             match action
             {
-                Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin)) =>
+                Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>
                 {
                     let mut m = 1.0;
                     if spin < 0.0
@@ -428,7 +418,7 @@ impl PhysicsWorld
                     }
                     new_pos = p_obj.position.prepend_rotation(&(Vector1::new(consts::FRAC_PI_2) * m));
                 },
-                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse)) =>
+                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse, _)) =>
                 {
                     let mut m = 1.0;
                     if impulse < 0.0
@@ -437,7 +427,7 @@ impl PhysicsWorld
                     }
                     new_pos = p_obj.position.append_translation(&Vector2::new(0.0, m*1.0));
                 },
-                Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, impulse)) =>
+                Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, impulse, _)) =>
                 {
                     let mut m = 1.0;
                     if impulse < 0.0
@@ -515,5 +505,96 @@ impl PhysicsWorld
     fn get(&self, id: usize) -> Option<&CollisionObject2<f32, PolyminiPhysicsData>>
     {
         self.world.collision_object(id)
+    }
+}
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+    use ::actuators::*;
+    use ::types::*;
+
+
+    fn test_movement_accumulator_master(actions: ActionList, expected_impulse: f32, expected_direction: Direction)
+    {
+        //
+        let accum = actions.iter().fold(PhysicsActionAccumulator::new(),
+                                        |mut accum, action|
+                                        {
+                                            match action
+                                            {
+                                                &Action::MoveAction(MoveAction::Move(d, i, t)) =>
+                                                {
+                                                    accum.accumulate(d, i, t);
+                                                },
+                                                _ =>
+                                                {
+                                                    //Ignore
+                                                }
+                                            }
+                                            accum
+                                       });
+        match accum.to_action()
+        {
+            Action::MoveAction(MoveAction::Move(dir, impulse, _)) =>
+            {
+                assert_eq!(dir, expected_direction);
+                assert!( (impulse - expected_impulse) < 0.001);
+            },
+            WrongAction =>
+            {
+                panic!("Result of PhysicAccumulatorIncorrect - {:?}", WrongAction);
+            }
+        }
+    }
+
+    #[test]
+    fn test_movement_accumulator_1()
+    {
+        test_movement_accumulator_master( vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                               Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                                          1.2,
+                                          Direction::HORIZONTAL);
+    }
+
+    #[test]
+    fn test_movement_accumulator_2()
+    {
+        test_movement_accumulator_master( vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
+                                               Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                                          2.0,
+                                          Direction::ROTATION);
+    }
+
+
+    #[test]
+    fn test_accum_from_actuators_1()
+    {
+        let ac_list = vec![ Actuator::new(ActuatorTag::MoveHorizontal, 0, (0, 1)), 
+                            Actuator::new(ActuatorTag::MoveHorizontal, 1, (1, 1)) ];
+        let mut actions = vec![];
+
+        for actuator in ac_list
+        {
+            actions.push(actuator.get_action(1.1));
+        }
+
+        test_movement_accumulator_master(actions, 2.2, Direction::HORIZONTAL);
+    }
+
+    #[test]
+    fn test_accum_from_actuators_2()
+    {
+        let ac_list = vec![ Actuator::new(ActuatorTag::MoveHorizontal, 0, (0, 2)), 
+                            Actuator::new(ActuatorTag::MoveHorizontal, 1, (1, 1)) ];
+        let mut actions = vec![];
+
+        for actuator in ac_list
+        {
+            actions.push(actuator.get_action(1.1));
+        }
+
+        test_movement_accumulator_master(actions, 3.3, Direction::ROTATION);
     }
 }
