@@ -45,11 +45,32 @@ impl Serializable for CollisionEvent
     fn serialize(&self, _: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("ID_1".to_string(), self.id_1.to_json());
-        json_obj.insert("ID_2".to_string(), self.id_2.to_json());
+        json_obj.insert("ID_1".to_owned(), self.id_1.to_json());
+        json_obj.insert("ID_2".to_owned(), self.id_2.to_json());
         Json::Object(json_obj)
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+struct StaticCollider
+{
+    uuid: PUUID,
+    position: (f32, f32),
+    dimensions: (u8, u8),
+}
+impl Serializable for StaticCollider
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("ID".to_owned(), self.uuid.to_json());
+        json_obj.insert("Position".to_owned(), self.position.to_json());
+        json_obj.insert("Dimensions".to_owned(), self.dimensions.to_json());
+        Json::Object(json_obj)
+    }
+}
+
+
 
 #[derive(Debug)]
 struct PolyminiPhysicsData
@@ -359,6 +380,7 @@ impl ProximityHandler<Point2<f32>, Isometry2<f32>, PolyminiPhysicsData> for Phys
 pub struct PhysicsWorld
 {
     world: CollisionWorld2<f32, PolyminiPhysicsData>,
+    static_objects: Vec<StaticCollider>,
 
     //
     polyminis_cgroup: CollisionGroups,
@@ -380,8 +402,9 @@ impl PhysicsWorld
         ocg.set_whitelist(&[1]);
 
         let ph_w = PhysicsWorld { world: col_w,
+                                  static_objects: vec![],
                                   polyminis_cgroup: pcg,
-                                  objects_cgroup: ocg
+                                  objects_cgroup: ocg,
         };
         ph_w
     }
@@ -397,6 +420,8 @@ impl PhysicsWorld
                             ShapeHandle2::new(rect),
                             self.objects_cgroup, GeometricQueryType::Proximity(0.0),
                             PolyminiPhysicsData::new_static_object(nc_pos));
+
+        self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
     }
 
     pub fn add(&mut self, physics: &Physics, morph: &Morphology)
@@ -465,7 +490,6 @@ impl PhysicsWorld
 
         // Idea: We handle collisions, and undo movements and reupdate
         // so things stay in the same place but the collision is recorded
-        //self.world.update();
         //
         loop
         {
@@ -515,5 +539,24 @@ impl PhysicsWorld
     fn get(&self, id: usize) -> Option<&CollisionObject2<f32, PolyminiPhysicsData>>
     {
         self.world.collision_object(id)
+    }
+}
+impl Serializable for PhysicsWorld
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        
+        let mut json_obj = pmJsonObject::new();
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        {
+            // Serialize Static objects
+            let mut so_arr = pmJsonArray::new();
+            for static_obj in &self.static_objects
+            {
+                so_arr.push(static_obj.serialize(ctx));
+            }
+            json_obj.insert("StaticObjects".to_string(), Json::Array(so_arr));
+        }
+        Json::Object(json_obj)
     }
 }

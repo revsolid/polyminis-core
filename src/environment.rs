@@ -5,20 +5,11 @@ use ::serialization::*;
 use ::species::*;
 use ::uuid::*;
 
-
-struct StaticCollider 
-{
-    uuid: PUUID,
-    position: (f32, f32),
-    dimensions: (u8, u8),
-}
-
 const KENVIRONMENT_DIMENSIONS: (f32, f32) = (100.0, 100.0);
 pub struct Environment
 {
     dimensions: (f32, f32),
     physical_world: PhysicsWorld,
-    static_objects: Vec<StaticCollider>,
 }
 impl Environment
 {
@@ -28,7 +19,6 @@ impl Environment
         {
             dimensions: KENVIRONMENT_DIMENSIONS,
             physical_world: PhysicsWorld::new(),
-            static_objects: vec![],
         }
     }
 
@@ -43,11 +33,29 @@ impl Environment
         let uuid = PolyminiUUIDCtx::next();
 
         self.physical_world.add_object(uuid, position, dimensions);
-        self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
-
         //TODO: Maybe add to other worlds
     }
 }
+impl Serializable for Environment
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+        {
+        }
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        {
+            //
+            json_obj.insert("PhysicsWorld".to_owned(), self.physical_world.serialize(ctx));
+            
+        }
+        Json::Object(json_obj)
+    }
+}
+
 
 pub struct Simulation
 {
@@ -202,6 +210,7 @@ impl Serializable for Simulation
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
+            //
         }
 
 
