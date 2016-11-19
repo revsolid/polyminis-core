@@ -213,7 +213,7 @@ impl Serializable for Simulation
             //
         }
 
-        json_obj.insert("environment", self.environment.serialize(ctx));
+        json_obj.insert("environment".to_owned(), self.environment.serialize(ctx));
 
 
         let mut json_arr = pmJsonArray::new();
