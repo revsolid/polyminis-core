@@ -14,8 +14,19 @@ impl Species
 {
     pub fn new(pop: Vec<Polymini>) -> Species
     {
-        let sp_name = format!("Species {}", PolyminiUUIDCtx::next());
-        Species { name: sp_name, ga: PolyminiGeneticAlgorithm::new(pop), translation_table: TranslationTable::new() }
+        let id = PolyminiUUIDCtx::next();
+        let sp_name = format!("Species {}", id);
+
+        // TODO: Fix this 
+        let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
+                              percentage_elitism: 0.2, };
+
+        //
+
+        //
+        Species { name: sp_name,
+                  ga: PolyminiGeneticAlgorithm::new(pop, id, cfg),
+                  translation_table: TranslationTable::new() }
     }
 
     pub fn get_name(&self) -> &String
@@ -31,6 +42,11 @@ impl Species
     pub fn get_generation_mut(&mut self) -> &mut PolyminiGeneration<Polymini>
     {
         self.ga.get_population_mut()
+    }
+
+    pub fn advance_epoch(&mut self)
+    {
+        self.ga.step();
     }
 }
 
