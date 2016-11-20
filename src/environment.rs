@@ -19,16 +19,18 @@ pub struct Environment
     dimensions: (f32, f32),
     physical_world: PhysicsWorld,
     static_objects: Vec<StaticCollider>,
+    species_slots: usize,
 }
 impl Environment
 {
-    pub fn new() -> Environment
+    pub fn new(species_slots: usize) -> Environment
     {
         Environment
         {
             dimensions: KENVIRONMENT_DIMENSIONS,
             physical_world: PhysicsWorld::new(),
             static_objects: vec![],
+            species_slots: species_slots
         }
     }
 
@@ -47,24 +49,62 @@ impl Environment
 
         //TODO: Maybe add to other worlds
     }
+
+    pub fn get_species_slots(&self) -> usize
+    {
+        self.species_slots
+    }
 }
 
 pub struct Simulation
 {
-    environment: Environment,
-    species: Vec<Species>,
-    steps: usize,
+    current_epoch: SimulationEpoch,
+    epoch_num: usize,
+    steps_per_epoch: usize,
 }
 impl Simulation
 {
     pub fn new() -> Simulation
     {
-        Simulation { environment: Environment::new(), species: vec![], steps: 0 } 
+        Simulation { current_epoch: SimulationEpoch::new(), epoch_num: 0, steps_per_epoch: 100 }
     }
 
-    pub fn new_with_env(environment: Environment) -> Simulation
+    pub fn step(&mut self)
     {
-        Simulation { environment: environment, species: vec![], steps: 0 } 
+        if self.epoch_num != 0 && self.epoch_num % self.steps_per_epoch == 0
+        {
+            self.advance_epoch();
+        }
+
+        self.current_epoch.step()
+    }
+
+    pub fn advance_epoch(&mut self)
+    {
+        self.current_epoch = self.current_epoch.advance();
+    }
+}
+pub struct SimulationEpoch
+{
+    environment: Environment,
+    species: Vec<Species>,
+    steps: usize,
+}
+impl SimulationEpoch
+{
+    pub fn new() -> SimulationEpoch
+    {
+        SimulationEpoch { environment: Environment::new(2), species: vec![], steps: 0 } 
+    }
+
+    pub fn new_with_env(environment: Environment) -> SimulationEpoch
+    {
+        SimulationEpoch { environment: environment, species: vec![], steps: 0 } 
+    }
+
+    pub fn is_full(&self) -> bool
+    {
+        self.species.len() == self.environment.get_species_slots()
     }
 
     pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
@@ -74,9 +114,10 @@ impl Simulation
 
     pub fn add_species(&mut self, species: Species)
     {
-        // Register all individuals with the environment that species to the respective worlds
-        //
-        let _ = species.get_generation().size();
+        if self.is_full()
+        {
+            // Error ?
+        }
         
         // Environment Registration
         for ind in species.get_generation().iter()
@@ -89,19 +130,33 @@ impl Simulation
         self.species.push(species);
     }
 
+    // TODO: This should, in some way, destroy *self* epoch
+    pub fn advance(&mut self) -> SimulationEpoch
+    {
+        for species in &mut self.species
+        {
+            species.advance_epoch();
+        }
+
+        let mut new_epoch_species = vec![];
+        new_epoch_species.append(&mut self.species);
+
+        // TODO: Advance the Environment's epoch and copy it over
+        SimulationEpoch { environment: Environment::new(2), species: new_epoch_species, steps: 0 }
+    }
+
     pub fn step(&mut self)
     {
-        self.environment_setup();
+        self.init_phase();
         self.sense_phase();
         self.think_phase();
         self.act_phase();
-        self.consequence();
+        self.consequence_phase();
         self.steps += 1;
     }
 
-    fn environment_setup(&self)
+    fn init_phase(&mut self)
     {
-        // Set up World 
     }
     fn sense_phase(&mut self)
     {
@@ -146,7 +201,7 @@ impl Simulation
             }
         }
     }
-    fn consequence(&mut self)
+    fn consequence_phase(&mut self)
     {
         // Update environment based on the aftermath of the simulation
 
@@ -169,6 +224,8 @@ impl Simulation
         // Combat
 
         // Energy consumption
+        
+        // GA Evaluation and Sort
     }
     fn sense_for(&self, perspective: &Perspective) -> SensoryPayload
     {
@@ -189,7 +246,7 @@ impl Simulation
 
 //
 //
-impl Serializable for Simulation
+impl Serializable for SimulationEpoch
 {
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
@@ -232,7 +289,7 @@ mod test
     fn test_step()
     {
         //
-        let mut s = Simulation::new();
+        let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![]));
 
         s.step();
@@ -246,10 +303,9 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
 
-        let mut s = Simulation::new();
+        let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
         s.step();
     }
@@ -262,9 +318,8 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
-        let mut s = Simulation::new();
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
+        let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
         for _ in 0..10 
         {
@@ -280,9 +335,8 @@ mod test
                                [0,    0, 0xBE, 0xEF],
                                [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new(Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
-        let mut s = Simulation::new();
+        let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
+        let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
         s.add_object((10.0, 2.0), (1, 1));
         for _ in 0..10 
@@ -306,16 +360,14 @@ mod test
                                 [0,    0, 0xBE, 0xEF],
                                 [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(chromosomes, &TranslationTable::new()),
-                               Control::new());
-        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(chromosomes2, &TranslationTable::new()),
-                               Control::new());
+        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
 
         println!("{:?}", p1.get_morphology());
         println!(">> {:?}", p1.get_physics().get_pos());
         println!("{:?}", p2.get_morphology());
         println!(">> {:?}", p2.get_physics().get_pos());
-        let mut s = Simulation::new();
+        let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
         s.add_object((10.0, 2.0), (1, 1));
         for _ in 0..10 

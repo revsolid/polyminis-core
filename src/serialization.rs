@@ -15,10 +15,14 @@ pub mod PolyminiSerializationFlags
         pub flags SerializationFlags: u32
         {
             const PM_SF_NONE    = 0b00000000,
+
             const PM_SF_STATIC  = 0b00000001,
+
             const PM_SF_DYNAMIC = 0b00000010,
 
-            const PM_SF_DEBUG   = 0b00000011,
+            const PM_SF_DB      = 0b00000100,
+
+            const PM_SF_DEBUG   = ( PM_SF_STATIC.bits | PM_SF_DYNAMIC.bits | PM_SF_DB.bits ),
         }
     }
 }
@@ -56,5 +60,14 @@ impl ToJson for Serializable
     fn to_json(&self)-> Json
     {
         self.serialize(&mut SerializationCtx::new())
+    }
+}
+
+pub trait Deserializable
+{
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<Self> where Self: Sized;
+    fn update_from(&mut self, json: &Json, ctx: &mut SerializationCtx)
+    {
+        // Should log something to remind the caller that this is empty
     }
 }

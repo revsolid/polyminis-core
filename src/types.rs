@@ -2,7 +2,7 @@ use std::fmt;
 
 use ::serialization::*;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Direction
 {
     UP,
@@ -44,3 +44,5 @@ impl fmt::Display for Direction
         fmt::Debug::fmt(self, f)
     }
 }
+
+pub type Coord = (i32, i32);
