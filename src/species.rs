@@ -11,7 +11,9 @@ pub struct Species
 {
     name: String,
     ga: PolyminiGeneticAlgorithm<Polymini>,
-    translation_table: TranslationTable,
+    //translation_table: TranslationTable,
+    //default_sensor_list: Vec<Sensor>
+    creation_context: PolyminiCreationCtx,
 }
 impl Species
 {
@@ -27,18 +29,21 @@ impl Species
         //
 
         //
-        Species { name: sp_name,
+        Species {
+                  name: sp_name,
                   ga: PolyminiGeneticAlgorithm::new(pop, id, cfg),
-                  translation_table: TranslationTable::new() }
+                  creation_context: PolyminiCreationCtx::empty()
+                }
     }
 
     pub fn new_from(name: String,
                     translation_table: TranslationTable,
-                    env: &Environment, pgaconfig: PGAConfig) -> Species
+                    default_sensors: &Vec<Sensor>, pgaconfig: PGAConfig) -> Species
     {
 
         let mut inds = vec![];
         let mut ctx = PolyminiRandomCtx::new_unseeded(name.clone());
+        //rng_ctx: PolyminiRandomCtx::from_seed([0, 1, 2, uuid as u32], format!("Species {}", uuid)),
 
         for i in 0..pgaconfig.population_size
         {
@@ -46,7 +51,7 @@ impl Species
                                                &mut ctx);
             let pos = (ctx.gen_range(0, 100) as f32, ctx.gen_range(0, 100) as f32);
 
-            let mut sensor_list = env.default_sensors.clone();
+            let mut sensor_list = default_sensors.clone();
             sensor_list.append(&mut morph.get_sensor_list());
 
             let hl_size = ctx.gen_range(3, 7);
@@ -56,9 +61,19 @@ impl Species
             inds.push(Polymini::new_with_control(pos, morph, control));
         }
 
-        Species { name: name,
-                  ga: PolyminiGeneticAlgorithm::new_with(inds, ctx, pgaconfig),
-                  translation_table: TranslationTable::new() }
+        Species {
+                  name: name,
+                  ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
+                  creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx)
+                }
+    }
+
+    pub fn reset(&mut self)
+    {
+        for i in 0..self.ga.get_population().size()
+        {
+            self.ga.get_population_mut().get_individual_mut(i).reset();
+        }
     }
 
     pub fn get_name(&self) -> &String
@@ -83,7 +98,8 @@ impl Species
 
     pub fn advance_epoch(&mut self)
     {
-        self.ga.step();
+        self.ga.step(&mut self.creation_context);
+        self.reset();
     }
 }
 

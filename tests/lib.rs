@@ -65,7 +65,7 @@ mod test
 
         info!("Creating Species");
         let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,
-                                   &env, cfg);
+                                   &env.default_sensors, cfg);
 
         info!("Adding Species");
         let mut epoch = SimulationEpoch::new_with(env, gens_per_epoch as usize);
@@ -79,29 +79,37 @@ mod test
         
         debug!("{}", sim.get_epoch()
                     .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
-        loop 
+
+        for i in 0..3
         {
-            info!("Before Step:");
-            if sim.step()
+            loop 
             {
-                break;
+                info!("Before Step:");
+                if sim.step()
+                {
+                    break;
+                }
+                info!("After Step:");
+                debug!("{}", sim.get_epoch()
+                            .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
             }
-            info!("After Step:");
-            debug!("{}", sim.get_epoch()
+            info!("After Epoch");
+            info!("{}", sim.get_epoch()
+                        .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+
+
+            sim.get_epoch_mut().evaluate_species(); 
+
+            info!("After Eval");
+            info!("{}", sim.get_epoch()
+                        .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+
+            sim.advance_epoch();
+
+            info!("After Advancing Epoch");
+            info!("{}", sim.get_epoch()
                         .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
         }
-        info!("{}", sim.get_epoch()
-                    .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
-
-
-        sim.get_epoch_mut().evaluate_species(); 
-        info!("{}", sim.get_epoch()
-                    .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
-
-        sim.advance_epoch();
-
-        info!("{}", sim.get_epoch()
-                    .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
 
     }
 }

@@ -13,6 +13,33 @@ use ::types::*;
 //
 pub type Chromosome = [u8; 4];
 
+//
+pub struct PolyminiCreationCtx
+{
+    pub trans_table: TranslationTable,
+    pub default_sensors: Vec<Sensor>,
+    pub random_context: PolyminiRandomCtx,
+}
+impl PolyminiCreationCtx
+{
+    pub fn empty() -> PolyminiCreationCtx
+    {
+        PolyminiCreationCtx::new_from(TranslationTable::new(), vec![], PolyminiRandomCtx::new_unseeded("Temporary".to_owned()))
+    }
+    pub fn new_from(tt: TranslationTable, default_sensors: Vec<Sensor>,
+                    rand_ctx: PolyminiRandomCtx) -> PolyminiCreationCtx
+    {
+        PolyminiCreationCtx { trans_table: tt, default_sensors: default_sensors, random_context: rand_ctx }
+    }
+}
+impl GAContext for PolyminiCreationCtx
+{
+    fn get_random_ctx(&mut self) -> &mut PolyminiRandomCtx
+    {
+        &mut self.random_context
+    }
+}
+
 
 //
 //
@@ -422,15 +449,15 @@ impl Morphology
         return self.dimensions
     }
 
-    pub fn crossover(&self, other: &Morphology, random_ctx: &mut PolyminiRandomCtx) -> Morphology
+    pub fn crossover(&self, other: &Morphology, creation_ctx: &mut PolyminiCreationCtx) -> Morphology
     {
         let mut chromosomes = vec![];
 
         // TODO: A LOT of magic numbers :S
         // bit to make the cut at
-        let cross_point_chromosome = random_ctx.gen_range(0, self.original_chromosome.len());
-        let cross_point_allele = random_ctx.gen_range(0, 4);
-        let cross_point_bit = random_ctx.gen_range(0, 8);
+        let cross_point_chromosome = creation_ctx.get_random_ctx().gen_range(0, self.original_chromosome.len());
+        let cross_point_allele = creation_ctx.get_random_ctx().gen_range(0, 4);
+        let cross_point_bit = creation_ctx.get_random_ctx().gen_range(0, 8);
 
 
         for i in 0..cross_point_chromosome
@@ -456,7 +483,7 @@ impl Morphology
 
         let mask_2 : u16 = (1 << ((8 - cross_point_bit))) - 1;
 
-        let cross_point_chromosome_2 = random_ctx.gen_range(0, other.original_chromosome.len()); 
+        let cross_point_chromosome_2 = creation_ctx.get_random_ctx().gen_range(0, other.original_chromosome.len()); 
 
         for lc in cross_point_allele..4
         {
@@ -484,7 +511,7 @@ impl Morphology
                  other.original_chromosome[cross_point_chromosome_2]);
         println!("{}", link_byte);
 
-        Morphology::new(&chromosomes, &TranslationTable::new())
+        Morphology::new(&chromosomes, &creation_ctx.trans_table)
     }
 
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)

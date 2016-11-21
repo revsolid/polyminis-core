@@ -42,11 +42,27 @@ struct CollisionEvent
 }
 impl Serializable for CollisionEvent
 {
-    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("ID_1".to_owned(), self.id_1.to_json());
         json_obj.insert("ID_2".to_owned(), self.id_2.to_json());
+
+        if (ctx.has_flag(PolyminiSerializationFlags::PM_SF_DEBUG))
+        { 
+            json_obj.insert("POS_1".to_owned(), self.pos_1.serialize(ctx));
+            json_obj.insert("POS_2".to_owned(), self.pos_2.serialize(ctx));
+        }
+        Json::Object(json_obj)
+    }
+}
+impl Serializable for Vector2<f32>
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("x".to_owned(), self.x.to_json());
+        json_obj.insert("y".to_owned(), self.y.to_json());
         Json::Object(json_obj)
     }
 }
@@ -253,6 +269,11 @@ impl Physics
             move_succeded: true,
             last_action: Action::NoAction,
         }
+    }
+
+    pub fn reset(&mut self)
+    {
+        self.ncoll_pos = self.ncoll_starting_pos;
     }
 
     pub fn get_pos(&self) -> (f32, f32)
@@ -518,6 +539,7 @@ impl PhysicsWorld
                 if (placement)
                 {
                     n_pos.translation +=  Vector2::new(1.0, 0.0);
+                    object_1.data.initial_pos.set(n_pos.translation);
                     corrections.push((object_1.uid, n_pos));
                 }
                 else
@@ -526,18 +548,23 @@ impl PhysicsWorld
                     corrections.push((object_2.uid, n_pos_2));
                 }
 
+                // Record Event
+                let ev = CollisionEvent
+                {
+                    id_1: object_1.uid,
+                    id_2: object_2.uid,
+                    pos_1: object_1.position.translation,
+                    pos_2: object_2.position.translation
+                };
+
+                debug!("{}", 
+                       ev.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+
                 if record_events
                 {
-                    // Record Event
-                    let ev = CollisionEvent { id_1: object_1.uid,
-                                              id_2: object_2.uid,
-                                              pos_1: object_1.position.translation,
-                                              pos_2: object_2.position.translation
-                    };
+
                     object_1.data.collision_events.borrow_mut().push(ev);
                     object_2.data.collision_events.borrow_mut().push(ev);
-                    debug!("{}", 
-                           ev.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
                 }
 
                 collisions = true;

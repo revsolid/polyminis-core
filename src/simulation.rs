@@ -92,16 +92,22 @@ impl SimulationEpoch
             // Error ?
             return;
         }
+
+        let mut sp = species;
         
         // Environment Registration
-        for ind in species.get_generation().iter()
+        debug!("Adding Species - Start Loop");
+        for ind in sp.get_generation_mut().iter()
         {
             self.environment.add_individual(ind);
         }
+        debug!("Adding Species - Done Loop");
+
+        debug!("Adding Species - Physics World Update");
         self.environment.physical_world.finish_adding();
 
         // Once fully registered we add them to the list of species
-        self.species.push(species);
+        self.species.push(sp);
     }
 
     pub fn evaluate_species(&mut self)
@@ -115,6 +121,7 @@ impl SimulationEpoch
     // TODO: This should, in some way, destroy *self* epoch
     pub fn advance(&mut self) -> SimulationEpoch
     {
+        debug!("Advancing Epoch - Species");
         for species in &mut self.species
         {
             species.advance_epoch();
@@ -124,7 +131,17 @@ impl SimulationEpoch
         new_epoch_species.append(&mut self.species);
 
         // TODO: Advance the Environment's epoch and copy it over
-        SimulationEpoch { environment: Environment::new(self.environment.get_species_slots(), self.environment.default_sensors.clone()), species: new_epoch_species, steps: 0, max_steps: 0 }
+        let mut new_epoch = SimulationEpoch::new_with(Environment::new(self.environment.get_species_slots(),
+                                                                       self.environment.default_sensors.clone()),
+                                                      self.max_steps);
+        debug!("Advancing Epoch - Reinserting Species");
+        for n_s in new_epoch_species
+        {
+            new_epoch.add_species(n_s);
+        }
+        debug!("Advancing Epoch - Done Reinserting Species");
+
+        new_epoch
     }
 
     pub fn step(&mut self)

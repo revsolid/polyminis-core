@@ -17,7 +17,6 @@ pub struct Stats
     //TODO: combat_stats: CombatStatistics
 }
 
-
 pub struct Polymini
 {
     uuid: PUUID,
@@ -131,6 +130,11 @@ impl Polymini
     {
         // TODO - Important for individuals that survive
         // and handling Sim restarts
+        info!("Reseting {} - Had Fitness {}", self.uuid, self.fitness());
+        self.physics.reset();
+        self.set_fitness(0.0);
+        self.set_raw(0.0);
+        self.fitness_statistics.clear();
     }
 
     pub fn get_id(&self) -> PUUID 
@@ -195,13 +199,17 @@ impl PolyminiGAIndividual for Polymini
 {
     fn crossover(&self, other: &Polymini, ctx: &mut Any) -> Box<Polymini>
     {
-        match ctx.downcast_mut::<PolyminiRandomCtx>()
+        info!("Crossing {} ({}) with {} ({})", self.uuid, self.fitness(), other.uuid, other.fitness());
+        match ctx.downcast_mut::<PolyminiCreationCtx>()
         {
-            Some(random_ctx) =>
+            Some(mut creation_ctx) =>
             {
-                let new_morphology = self.get_morphology().crossover(&other.get_morphology(), random_ctx);
-                let new_control = self.get_control().crossover(&other.get_control(), random_ctx, new_morphology.get_sensor_list(),
-                                                               new_morphology.get_actuator_list());
+                let new_morphology = self.get_morphology().crossover(&other.get_morphology(), &mut creation_ctx);
+                let mut sensor_list = creation_ctx.default_sensors.clone();
+                sensor_list.append(&mut new_morphology.get_sensor_list());
+
+                let new_control = self.get_control().crossover(&other.get_control(), &mut creation_ctx.random_context,
+                                                               sensor_list, new_morphology.get_actuator_list());
                 Box::new(Polymini::new_with_control((0.0, 0.0), new_morphology, new_control))
             },
             None =>
@@ -212,13 +220,14 @@ impl PolyminiGAIndividual for Polymini
     }
     fn mutate(&mut self, _:f32, ctx: &mut Any)
     {
-        match ctx.downcast_mut::<PolyminiRandomCtx>()
+        info!("Mutating {}", self.uuid);
+        match ctx.downcast_mut::<PolyminiCreationCtx>()
         {
-            Some (random_ctx) =>
+            Some (creation_ctx) =>
             {
             // Structural mutation should happen first
-                self.morph.mutate(random_ctx, &TranslationTable::new());
-                self.control.mutate(random_ctx, self.morph.get_sensor_list(), self.morph.get_actuator_list());
+                //self.morph.mutate(creation_ctx.random_context, &creation_ctx.trans_table);
+                //self.control.mutate(creation_ctx.random_context, self.morph.get_sensor_list(), self.morph.get_actuator_list());
             },
             None =>
             {
@@ -229,7 +238,7 @@ impl PolyminiGAIndividual for Polymini
     }
     fn evaluate(&mut self, ctx: &mut Any)
     {
-        info!("Evaluating individual");
+        info!("Evaluating individual {}", self.uuid);
         match ctx.downcast_mut::<PolyminiEvaluationCtx>()
         {
             Some (ctx) =>
@@ -237,12 +246,15 @@ impl PolyminiGAIndividual for Polymini
                 debug!(" using {} statistics", self.fitness_statistics.len());
                 ctx.evaluate(&self.fitness_statistics);
                 self.set_raw(ctx.get_raw());
+                //TODO: Get weights from somewhere
+                self.set_fitness(ctx.get_raw());
             },
             None =>
             {
                 panic!("");
             }
         }
+        info!("  Result: {}", self.raw());
     }
     fn fitness(&self) -> f32
     {
