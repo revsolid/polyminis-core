@@ -1,4 +1,5 @@
 use ::control::*;
+use ::evaluation::*;
 use ::genetics::*;
 use ::instincts::*;
 use ::morphology::*;
@@ -9,101 +10,6 @@ use ::uuid::*;
 use std::any::Any;
 
 
-mod Evaluation
-{
-    use ::actuators::*;
-    use ::instincts::*;
-    use std::collections::HashMap;
-    pub enum FitnessStatistic
-    {
-        NoOp,
-        Moved,
-        ConsumedFoodSource,
-        Died,
-    }
-    impl FitnessStatistic
-    {
-        pub fn new_from_action(action: &Action) -> FitnessStatistic
-        {
-            match *action
-            {
-                Action::MoveAction(_) =>
-                {
-                    return FitnessStatistic::Moved
-                }
-                _ => 
-                {
-                    return FitnessStatistic::NoOp
-                }
-            }
-        }
-    }
-
-    pub enum FitnessEvaluator
-    {
-    }
-    impl FitnessEvaluator
-    {
-        pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>) -> (Instinct, f32)
-        {
-            (Instinct::Basic, 0.0)
-        }
-    }
-
-    pub struct PolyminiEvaluationCtx
-    {
-        evaluators: Vec<FitnessEvaluator>,
-        accumulator: PolyminiFitnessAccumulator,
-    }
-    impl PolyminiEvaluationCtx
-    {
-        pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>)
-        {
-            self.evaluators.iter_mut().fold(&mut self.accumulator,
-                                            |accum, ref mut evaluator|
-                                            {
-                                                let v = evaluator.evaluate(statistics);
-                                                accum.add(&v.0, v.1);
-                                                accum
-                                            });
-        }
-    }
-
-    pub struct PolyminiFitnessAccumulator
-    {
-        accumulated_by_instinct: HashMap<Instinct, f32>,
-    }
-    impl PolyminiFitnessAccumulator
-    {
-        pub fn new(instincts: Vec<Instinct>) -> PolyminiFitnessAccumulator
-        {
-            let mut map = HashMap::new();
-
-            assert!(instincts.len() > 0, "No instincts will yield no evolution");
-
-            for i in &instincts
-            {
-                map.insert(*i, 0.0); 
-            }
-
-            PolyminiFitnessAccumulator { accumulated_by_instinct: map }
-        }
-        pub fn add(&mut self, instinct: &Instinct, v: f32)
-        {
-            let new_v;
-            match self.accumulated_by_instinct.get(instinct)
-            {
-                Some(accum) => { new_v = accum + v; },
-                None => { panic!("Incorrectly Initialized Accumulator") }
-            }
-
-            self.accumulated_by_instinct.insert(*instinct, new_v);
-        }
-    }
-}
-
-
-
 pub struct Stats
 {
     hp: i32,
@@ -112,7 +18,6 @@ pub struct Stats
 }
 
 
-use self::Evaluation::*;
 pub struct Polymini
 {
     uuid: PUUID,
@@ -140,14 +45,18 @@ impl Polymini
     pub fn new_at(pos: (f32, f32), morphology: Morphology) -> Polymini
     {
         //Build up the control
-        // TODO: Random Context :(
+        
+
+        //NOTE: Someone calling this function is opting into losing Random Context tracking
+        //      that's ok but is on the caller, if tracking is required when creating a Polymini
+        //      create Morphology and Control outside it and call new_with_control 
         let control = Control::new_from(morphology.get_sensor_list(), morphology.get_actuator_list(), 7,
                                         &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())),
                                         &mut RandomWeightsGenerator::new(&mut PolyminiRandomCtx::new_unseeded("TEMPORAL INDIVIDUAL".to_string())));
          
         Polymini::new_with_control(pos, morphology, control)
     }
-    fn new_with_control(pos: (f32, f32), morphology: Morphology, control: Control) -> Polymini
+    pub fn new_with_control(pos: (f32, f32), morphology: Morphology, control: Control) -> Polymini
     {
         let uuid = PolyminiUUIDCtx::next();
         let dim = morphology.get_dimensions();
@@ -180,18 +89,48 @@ impl Polymini
     {
         let actions = self.control.get_actions();
 
+        debug!("Action List Len: {}", actions.len());
         // Feed them into other systems
         self.physics.act_on(&actions, phys_world);
 
-
         for action in actions
         {
+            // TODO: Filter actions that didn't succeed in 
+            // a cleaner way
+            
+
+            match action
+            {
+                Action::MoveAction(_) =>
+                {
+                    if !self.physics.get_move_succeded()
+                    {
+                        continue
+                    }
+                },
+                _ => {}
+            }
+
             match FitnessStatistic::new_from_action(&action)
             {
-                FitnessStatistic::NoOp => {},
-                fitness_stat => { self.fitness_statistics.push(fitness_stat); }
+                FitnessStatistic::NoOp =>
+                {
+                    debug!("NoOp Statistic - Skipping");
+                },
+                fitness_stat =>
+                {
+                    debug!("Inserting Fitness Statistic");
+                    self.fitness_statistics.push(fitness_stat);
+                }
             }
         }
+        debug!("Fitness Statistics Len: {}", self.fitness_statistics.len());
+    }
+
+    pub fn reset(&mut self)
+    {
+        // TODO - Important for individuals that survive
+        // and handling Sim restarts
     }
 
     pub fn get_id(&self) -> PUUID 
@@ -233,14 +172,18 @@ impl Serializable for Polymini
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("id".to_string(), self.get_id().to_json());
+        json_obj.insert("id".to_owned(), self.get_id().to_json());
+        json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
+        json_obj.insert("Raw".to_owned(), self.raw().to_json());
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            json_obj.insert("morphology".to_string(), self.get_morphology().serialize(ctx));
+            json_obj.insert("morphology".to_owned(), self.get_morphology().serialize(ctx));
         }
 
-        json_obj.insert("physics".to_string(), self.get_physics().serialize(ctx));
+        json_obj.insert("control".to_owned(), self.get_control().serialize(ctx));
+
+        json_obj.insert("physics".to_owned(), self.get_physics().serialize(ctx));
         Json::Object(json_obj)
     }
 }
@@ -286,12 +229,14 @@ impl PolyminiGAIndividual for Polymini
     }
     fn evaluate(&mut self, ctx: &mut Any)
     {
+        info!("Evaluating individual");
         match ctx.downcast_mut::<PolyminiEvaluationCtx>()
         {
             Some (ctx) =>
             {
-                let raw_value = 0.0;
-                self.set_raw(raw_value);
+                debug!(" using {} statistics", self.fitness_statistics.len());
+                ctx.evaluate(&self.fitness_statistics);
+                self.set_raw(ctx.get_raw());
             },
             None =>
             {

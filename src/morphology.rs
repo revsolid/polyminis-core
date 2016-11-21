@@ -89,22 +89,39 @@ impl Serializable for Cell
 
 //
 //
+// A design note on Translation Table:
+// The translation table is basically a function F(t, n) -> T
+// t being a Tier and N being a number. T being a full on trait.
+// The Tier and the number of the Translation table are INDEPENDENT
+// of the Tier and Number from the Almanac.
+// The former represents within a Species how to translate DNA,
+// the latter is the "Thesaurus" of available DNA combinations.
+//
+// 
 pub struct TranslationTable
 {
     trait_table:  HashMap<(TraitTier, u8), PolyminiTrait>,
-    active:  HashMap<(TraitTier, u8), bool>,
 }
 impl TranslationTable
 {
     pub fn new() -> TranslationTable
     {
-        TranslationTable::new_from(HashMap::new(), HashMap::new())
+        TranslationTable::new_from(&HashMap::new(), &HashSet::new())
     }
 
-    pub fn new_from(trait_table: HashMap<(TraitTier, u8), PolyminiTrait>, 
-                    active:  HashMap<(TraitTier, u8), bool>) -> TranslationTable
+    pub fn new_from(trait_table: &HashMap<(TraitTier, u8), PolyminiTrait>, 
+                    active:  &HashSet<(TraitTier, u8)>) -> TranslationTable
     {
-        TranslationTable { trait_table: trait_table, active: active }
+        // Copy over the active mappings only
+        let mut filtered_table = HashMap::new();
+        for (k,v) in trait_table
+        {
+            if active.contains(k)
+            {
+                filtered_table.insert(*k, *v);
+            }
+        }
+        TranslationTable { trait_table: filtered_table }
     }
     
     fn create_for_chromosome(&self,
@@ -149,8 +166,9 @@ impl TranslationTable
 
         // TODO:
         // Get PolyminiTrait
-        let mut polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
-        match self.trait_table.get(&(TraitTier::from(tier), trait_num))
+        let trait_tier = TraitTier::from(tier);
+        let mut polymini_trait;
+        match self.trait_table.get(&(trait_tier, trait_num))
         {
             Some(trait_value) =>
             {
@@ -158,7 +176,7 @@ impl TranslationTable
             }
             None =>
             { 
-               // Value already initialized to a valid default above 
+               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
             }
         }
 
@@ -318,6 +336,21 @@ impl Morphology
         let rep = Morphology::create_representation(chromosomes, translation_table);
         
         Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
+    }
+
+    pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx) -> Morphology
+    {
+        let mut random_chromosomes = vec![];
+
+        for i in 0..15
+        {
+            random_chromosomes.push([ random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>() ]);
+        }
+
+        Morphology::new(&random_chromosomes, translation_table)
     }
 
     fn create_representation (chromosomes: &Vec<Chromosome>, translation_table: &TranslationTable) -> Representation

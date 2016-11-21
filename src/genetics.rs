@@ -13,11 +13,13 @@ pub use self::rust_monster::ga::ga_random::GARandomCtx as PolyminiRandomCtx;
 //
 //
 //
+use ::evaluation::*;
+use ::instincts::*;
 use ::uuid::*;
 
 use std::any::Any;
 
-// Raw vs Fitness:
+// NOTE: Raw vs Fitness:
 //
 // For every other module we use the Raw score
 // Internally, we use the Fitness Score in the GA as it is scaled using
@@ -63,16 +65,21 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
         self.individuals.raw_score_iterator()
     }
 
-    pub fn evaluate(&mut self, ctx: &mut Any)
+    pub fn evaluate(&mut self, evaluators: &Vec<FitnessEvaluator>, instincts: &Vec<Instinct>)
     {
-        self.individuals.evaluate(ctx);
+        for ref mut ind in &mut self.individuals.population().iter_mut()
+        {
+            let mut ctx = PolyminiEvaluationCtx::new_from(evaluators.clone(),
+                                                          PolyminiFitnessAccumulator::new(instincts.clone()));
+            ind.evaluate(&mut ctx);
+        }
         self.individuals.sort();
     }
 }
 
 
 // Genetic Algorithm Configuration
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PGAConfig
 {
     pub max_generations: u32,
@@ -81,6 +88,9 @@ pub struct PGAConfig
     //  Percentage of individuals that pass from generation
     //  to generation
     pub percentage_elitism: f32,
+
+    // Evaluation Context
+    pub fitness_evaluators: Vec<FitnessEvaluator>
 
 }
 impl PGAConfig
@@ -111,6 +121,17 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
                                    config: pgacfg,
                                  }
     }
+
+    pub fn new_with(pop: Vec<T>, random_ctx: PolyminiRandomCtx, pgacfg: PGAConfig) -> PolyminiGeneticAlgorithm<T>
+    {
+        PolyminiGeneticAlgorithm {
+                                   current_generation: 0,
+                                   rng_ctx: random_ctx,
+                                   population: PolyminiGeneration::new(pop),
+                                   config: pgacfg,
+                                 }
+
+    }
     
     pub fn get_population(&self) -> &PolyminiGeneration<T>
     {
@@ -120,6 +141,11 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
     pub fn get_population_mut(&mut self) -> &mut PolyminiGeneration<T>
     {
         &mut self.population
+    }
+
+    pub fn evaluate_population(&mut self)
+    {
+        self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic ]);
     }
 }
 
@@ -134,9 +160,9 @@ impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
     {
     } 
 
-    // Due to the nature of the GA, this step doesn't evaluate nor sorts
+    // Due to the nature of the GA, this step doesn't evaluate
     // it assumes an ordered list of individuals with their fitness set.
-    // This responsibilities are moved to the SimulationEpoch
+    // These responsibilities are offloaded to the 'evaluate' method of PolyminiGeneticAlgorithm
     fn  step_internal(&mut self) -> i32
     {
         let mut new_individuals : Vec<T> = vec![];
@@ -145,7 +171,7 @@ impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
         // Build up new_individuals
         let new_num_individuals =  self.config.get_new_individuals_per_generation();
 
-        for i in 0..new_num_individuals // TODO: Number of new individuals that per generation
+        for i in 0..new_num_individuals
         {
             let ind_1 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals, &mut self.rng_ctx);
             let ind_2 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals, &mut self.rng_ctx);
@@ -155,7 +181,7 @@ impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
         // Copy over best individuals from previous gen
         let kept_individuals = self.population.size() - new_num_individuals; 
         self.population.individuals.population().reverse();
-        for i in 0..kept_individuals // TODO: Number of individuals that pass from generation to the nextone
+        for i in 0..kept_individuals
         {
             match self.population.individuals.population().pop()
             {
@@ -167,6 +193,8 @@ impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
         self.population.individuals = GAPopulation::new(new_individuals, GAPopulationSortOrder::HighIsBest);
         self.current_generation += 1;
         
+        // TODO: Sort to avoid crashes in the Iterator, fix needed in rust-monster
+        self.population.individuals.sort();
         self.current_generation as i32
     }
 

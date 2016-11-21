@@ -203,9 +203,11 @@ fn serialize_vector(v: Vector2<f32>) -> Json
 pub struct Physics
 {
     uuid: PUUID,
-    ncoll_dimensions: Vector2<f32> ,
 
+    ncoll_dimensions: Vector2<f32> ,
     ncoll_pos: Vector2<f32>,
+    ncoll_starting_pos: Vector2<f32>,
+
     orientation: u8,
     collisions: Vec<CollisionEvent>,
 
@@ -239,9 +241,11 @@ impl Physics
         Physics
         {
             uuid: uuid,
-            ncoll_dimensions: nc_dims,
 
+            ncoll_dimensions: nc_dims,
             ncoll_pos: nc_pos,
+            ncoll_starting_pos: nc_pos,
+
             orientation: orientation,
             collisions: vec![],
 
@@ -300,9 +304,12 @@ impl Physics
 
         // Update position
         self.ncoll_pos = o.position.translation;
+
         // If an attempt to move was made, but we didn't move, update
-        // last move succeded (TODO)
+        // last move succeded
         //
+        self.move_succeded =  (self.collisions.len() == 0);
+        
 
         // Copy collision events over and nuke the list
         self.collisions.clear();
@@ -476,7 +483,19 @@ impl PhysicsWorld
 
     pub fn step(&mut self)
     {
-        let mut record_events = true;
+        self.step_internal(true, false);
+    }
+
+    pub fn finish_adding(&mut self)
+    {
+        self.step_internal(false, true);
+    }
+
+    // NOTE:
+    // Placement means we retry positioning objects that are colliding 
+    fn step_internal(&mut self, record_events_param: bool, placement: bool)
+    {
+        let mut record_events = record_events_param;
 
         // Idea: We handle collisions, and undo movements and reupdate
         // so things stay in the same place but the collision is recorded
@@ -491,11 +510,21 @@ impl PhysicsWorld
                 let (object_1, object_2, _) = coll_data;
                 let mut n_pos = object_1.position;
                 n_pos.translation = object_1.data.initial_pos.get();
-                corrections.push((object_1.uid, n_pos));
 
                 let mut n_pos_2 = object_2.position;
                 n_pos_2.translation = object_2.data.initial_pos.get();
-                corrections.push((object_2.uid, n_pos_2));
+
+
+                if (placement)
+                {
+                    n_pos.translation +=  Vector2::new(1.0, 0.0);
+                    corrections.push((object_1.uid, n_pos));
+                }
+                else
+                {
+                    corrections.push((object_1.uid, n_pos));
+                    corrections.push((object_2.uid, n_pos_2));
+                }
 
                 if record_events
                 {
@@ -507,6 +536,8 @@ impl PhysicsWorld
                     };
                     object_1.data.collision_events.borrow_mut().push(ev);
                     object_2.data.collision_events.borrow_mut().push(ev);
+                    debug!("{}", 
+                           ev.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
                 }
 
                 collisions = true;

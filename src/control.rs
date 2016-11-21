@@ -10,6 +10,7 @@ pub use ::actuators::*;
 pub use ::sensors::*;
 
 use ::genetics::*;
+use ::serialization::*;
 use ::types::*;
 
 pub struct Perspective
@@ -59,13 +60,44 @@ impl Control
                 }
     }
 
-    pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize, in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
+    pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize,
+                       in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
     {
         let in_len = Sensor::get_total_cardinality(&sensor_list);
         let out_len = actuator_list.len();
 
         let in_to_hidden:  NNLayer = FeedforwardLayer::new_from(in_len, hidden_layer_size, sigmoid(), ||(in_to_hid_weight_generator.generate()));
         let hidden_to_out: NNLayer = FeedforwardLayer::new_from(hidden_layer_size, out_len, sigmoid(), ||(hid_to_out_weight_generator.generate()));
+
+        Control
+        {
+          sensor_list: sensor_list,
+          actuator_list: actuator_list,
+          hidden_layer_size: hidden_layer_size,
+          nn: vec![in_to_hidden, hidden_to_out],
+          inputs: vec![0.0; in_len],
+          outputs: vec![0.0; out_len]
+        }
+    }
+
+    pub fn new_from_random_ctx(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize,
+                               rnd_ctx: &mut PolyminiRandomCtx) -> Control
+    {
+        let in_len = Sensor::get_total_cardinality(&sensor_list);
+        let out_len = actuator_list.len();
+
+        let in_to_hidden:  NNLayer =
+        {
+
+            let mut in_to_hid_gen = RandomWeightsGenerator::new(rnd_ctx);
+            FeedforwardLayer::new_from(in_len, hidden_layer_size, sigmoid(), ||(in_to_hid_gen.generate()))
+        };
+
+        let hidden_to_out: NNLayer = 
+        {
+            let mut hid_to_out_gen = RandomWeightsGenerator::new(rnd_ctx);
+            FeedforwardLayer::new_from(hidden_layer_size, out_len, sigmoid(), ||(hid_to_out_gen.generate()))
+        };
 
         Control
         {
@@ -119,11 +151,11 @@ impl Control
             action_list.push(actuator.get_action(self.outputs[i]));
         }
         // TODO: Return this action list
-        action_list;
+        action_list
 
         // TODO: TOTALLY temporary implementation used to test
-        vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))]
+        //vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+        //     Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))]
     }
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
@@ -198,6 +230,42 @@ impl Control
         } 
     }
 }
+impl Serializable for Control
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+       let mut json_obj = pmJsonObject::new();
+       if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) 
+       {
+           // Structure of the Neural Network
+           json_obj.insert("InToHidden".to_owned(), self.nn[0].serialize(ctx));
+           json_obj.insert("HiddenToOutput".to_owned(), self.nn[1].serialize(ctx));
+       }
+       if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+       {
+           // Values firing in the hidden and output layer each step
+           json_obj.insert("Inputs".to_owned(), self.inputs.to_json());
+       }
+       Json::Object(json_obj)
+    }
+}
+
+
+
+
+impl Serializable for NNLayer
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+       let mut json_arr = pmJsonArray::new();
+       for v in self.get_coefficients()
+       {
+           json_arr.push(v.to_json());
+       }
+       Json::Array(json_arr)
+    }
+}
+
 
 
 pub trait WeightsGenerator

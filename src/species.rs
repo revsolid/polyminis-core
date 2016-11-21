@@ -1,6 +1,9 @@
+use ::control::*;
+use ::environment::*;
+use ::evaluation::*;
+use ::genetics::*;
 use ::morphology::*;
 use ::polymini::*;
-use ::genetics::*;
 use ::serialization::*;
 use ::uuid::*;
 
@@ -17,15 +20,44 @@ impl Species
         let id = PolyminiUUIDCtx::next();
         let sp_name = format!("Species {}", id);
 
-        // TODO: Fix this 
+        // TODO: This configuration should come from somewhere 
         let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
-                              percentage_elitism: 0.2, };
+                              percentage_elitism: 0.2, fitness_evaluators: vec![] };
 
         //
 
         //
         Species { name: sp_name,
                   ga: PolyminiGeneticAlgorithm::new(pop, id, cfg),
+                  translation_table: TranslationTable::new() }
+    }
+
+    pub fn new_from(name: String,
+                    translation_table: TranslationTable,
+                    env: &Environment, pgaconfig: PGAConfig) -> Species
+    {
+
+        let mut inds = vec![];
+        let mut ctx = PolyminiRandomCtx::new_unseeded(name.clone());
+
+        for i in 0..pgaconfig.population_size
+        {
+            let morph = Morphology::new_random(&translation_table,
+                                               &mut ctx);
+            let pos = (ctx.gen_range(0, 100) as f32, ctx.gen_range(0, 100) as f32);
+
+            let mut sensor_list = env.default_sensors.clone();
+            sensor_list.append(&mut morph.get_sensor_list());
+
+            let hl_size = ctx.gen_range(3, 7);
+
+            let control = Control::new_from_random_ctx(sensor_list, morph.get_actuator_list(), hl_size, &mut ctx);
+
+            inds.push(Polymini::new_with_control(pos, morph, control));
+        }
+
+        Species { name: name,
+                  ga: PolyminiGeneticAlgorithm::new_with(inds, ctx, pgaconfig),
                   translation_table: TranslationTable::new() }
     }
 
@@ -42,6 +74,11 @@ impl Species
     pub fn get_generation_mut(&mut self) -> &mut PolyminiGeneration<Polymini>
     {
         self.ga.get_population_mut()
+    }
+
+    pub fn evaluate(&mut self)
+    {
+        self.ga.evaluate_population();
     }
 
     pub fn advance_epoch(&mut self)
@@ -63,11 +100,14 @@ impl Serializable for Species
         }
 
         let mut pop_arr = pmJsonArray::new();
-        for ind in self.ga.get_population().iter()
+        if self.ga.get_population().size() > 0
         {
-            pop_arr.push(ind.serialize(ctx));
+            for ind in self.ga.get_population().iter()
+            {
+                pop_arr.push(ind.serialize(ctx));
+            }
+            json_obj.insert("population".to_string(), Json::Array(pop_arr));
         }
-        json_obj.insert("population".to_string(), Json::Array(pop_arr));
         Json::Object(json_obj)
     }
 }
