@@ -2,11 +2,19 @@ use ::actuators::*;
 use ::instincts::*;
 use std::collections::HashMap;
 
+//TODO Maybe use naming or sub-enums?
 pub enum FitnessStatistic
 {
+    // Util and Control
     NoOp,
+
+    // From Actions
     Moved,
     ConsumedFoodSource,
+
+    // Epoch-Wide
+    DistanceTravelled(f32),
+
     Died,
 }
 impl FitnessStatistic
@@ -38,29 +46,47 @@ impl FitnessEvaluator
     pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>) -> (Instinct, f32)
     {
         debug!("Evaluating - {}", statistics.len());
+
         match *self
         {
             FitnessEvaluator::OverallMovement => 
             {
                 let i = Instinct::Nomadic;
-                let mut v = 0.0;
-                for s in statistics
-                {
-                    match s
-                    {
-                        &FitnessStatistic::Moved =>
-                        {
-                            v += 0.5;
-                        },
-                        _ => {}
-                    }
-                }
+                let v = statistics.iter().fold(0.0,
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::Moved =>
+                                                      {
+                                                         accum += 0.5;
+                                                      },
+                                                      _ => {}
+                                                  }
+                                               accum
+                                               });
                 debug!("Evaluated {} for {} due to Overall Movement", v, i);
                 (i, v)
             },
             FitnessEvaluator::DistanceTravelled =>
             {
-                (Instinct::Basic, 0.0)
+                let i = Instinct::Nomadic;
+                let v = statistics.iter().fold(0.0,
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::DistanceTravelled(dist) =>
+                                                      {
+                                                         accum += (0.25 * dist);
+                                                      },
+                                                      _ => {}
+                                                  }
+                                               accum
+                                               });
+
+                debug!("Evaluated {} for {} due to Distance Travelled", v, i);
+                (i, v)
             },
         }
     }

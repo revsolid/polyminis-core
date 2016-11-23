@@ -32,6 +32,8 @@ impl PolyminiUUIDCtx
 {
     pub fn next() -> PUUID 
     {
-        next_global()
+        let v = next_global();
+        info!("{}", v);
+        v
     }
 }

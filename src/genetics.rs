@@ -97,7 +97,7 @@ impl PGAConfig
 {
     pub fn get_new_individuals_per_generation(&self) -> usize
     {
-        (self.percentage_elitism * self.population_size as f32).floor() as usize
+         (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
     }
 }
 
@@ -172,16 +172,10 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
 
         // Copy over best individuals from previous gen
         let kept_individuals = self.population.size() - new_num_individuals; 
-        self.population.individuals.population().reverse();
 
-        for i in 0..kept_individuals
-        {
-            match self.population.individuals.population().pop()
-            {
-                Some(ind) => { new_individuals.push(ind); }
-                None => { panic!("Error empty population"); }
-            }
-        }
+
+        let mut drain = self.population.individuals.drain_best_individuals(kept_individuals, GAPopulationSortBasis::Fitness);
+        new_individuals.append(&mut drain);
 
         self.population.individuals = GAPopulation::new(new_individuals, GAPopulationSortOrder::HighIsBest);
         self.current_generation += 1;

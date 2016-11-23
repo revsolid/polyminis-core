@@ -49,7 +49,8 @@ impl Simulation
 
     pub fn advance_epoch(&mut self)
     {
-        info!("Advancing Epoch");
+        info!("Advancing Epoch - {} to {}", self.epoch_num, self.epoch_num + 1);
+        self.epoch_num += 1;
         let new_epoch = self.current_epoch.advance();
         self.swap_epoch(new_epoch);
     }
@@ -104,7 +105,6 @@ impl SimulationEpoch
         debug!("Adding Species - Done Loop");
 
         debug!("Adding Species - Physics World Update");
-        self.environment.physical_world.finish_adding();
 
         // Once fully registered we add them to the list of species
         self.species.push(sp);
@@ -115,6 +115,14 @@ impl SimulationEpoch
         for species in &mut self.species
         {
             species.evaluate();
+        }
+    }
+
+    pub fn dump_species_random_ctx(&mut self)
+    {
+        for species in &mut self.species
+        {
+            species.dump_random_ctx();
         }
     }
 
@@ -284,6 +292,7 @@ impl Serializable for SimulationEpoch
 #[cfg(test)]
 mod test
 {
+    extern crate env_logger;
     use super::*;
 
     use ::control::*;
@@ -305,6 +314,7 @@ mod test
     #[test]
     fn test_step_2()
     {
+        let _ = env_logger::init();
         let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
                                [0, 0x0B, 0xBE, 0xDA],
                                [0,    0, 0xBE, 0xEF],
@@ -320,6 +330,7 @@ mod test
     #[test]
     fn test_step_3()
     {
+        let _ = env_logger::init();
         let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
                                [0, 0x0B, 0xBE, 0xDA],
                                [0,    0, 0xBE, 0xEF],

@@ -12,6 +12,7 @@ mod test
     use polyminis_core::evaluation::*;
     use polyminis_core::genetics::*;
     use polyminis_core::morphology::*;
+    use polyminis_core::polymini::*;
     use polyminis_core::sensors::*;
     use polyminis_core::serialization::*;
     use polyminis_core::simulation::*;
@@ -20,9 +21,7 @@ mod test
 
     use std::collections::{HashMap, HashSet};
 
-#[test]
-
-
+    #[test]
     pub fn main_test()
     {
         let mut sim = Simulation::new(); 
@@ -80,7 +79,7 @@ mod test
         debug!("{}", sim.get_epoch()
                     .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
 
-        for i in 0..3
+        for i in 0..5
         {
             loop 
             {
@@ -111,5 +110,6 @@ mod test
                         .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
         }
 
+        sim.get_epoch_mut().dump_species_random_ctx();
     }
 }

@@ -72,7 +72,7 @@ impl Species
     {
         for i in 0..self.ga.get_population().size()
         {
-            self.ga.get_population_mut().get_individual_mut(i).reset();
+            self.ga.get_population_mut().get_individual_mut(i).reset(&mut self.creation_context.get_random_ctx());
         }
     }
 
@@ -100,6 +100,11 @@ impl Species
     {
         self.ga.step(&mut self.creation_context);
         self.reset();
+    }
+
+    pub fn dump_random_ctx(&mut self)
+    {
+        info!("{:?}", self.creation_context.get_random_ctx());
     }
 }
 

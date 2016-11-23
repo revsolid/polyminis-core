@@ -92,20 +92,20 @@ impl Polymini
         // Feed them into other systems
         self.physics.act_on(&actions, phys_world);
 
+        let mut move_already_recorded = false;
         for action in actions
         {
-            // TODO: Filter actions that didn't succeed in 
-            // a cleaner way
-            
-
+            // TODO: Filter actions in a cleaner way
             match action
             {
                 Action::MoveAction(_) =>
                 {
-                    if !self.physics.get_move_succeded()
+                    if !self.physics.get_move_succeded() ||
+                        move_already_recorded
                     {
                         continue
                     }
+                    move_already_recorded = true;
                 },
                 _ => {}
             }
@@ -123,15 +123,17 @@ impl Polymini
                 }
             }
         }
+
         debug!("Fitness Statistics Len: {}", self.fitness_statistics.len());
     }
 
-    pub fn reset(&mut self)
+    pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx)
     {
         // TODO - Important for individuals that survive
         // and handling Sim restarts
         info!("Reseting {} - Had Fitness {}", self.uuid, self.fitness());
-        self.physics.reset();
+        self.physics.reset( (random_ctx.gen_range(1, 100) as f32,
+                             random_ctx.gen_range(1, 100) as f32) );
         self.set_fitness(0.0);
         self.set_raw(0.0);
         self.fitness_statistics.clear();
@@ -244,6 +246,9 @@ impl PolyminiGAIndividual for Polymini
             Some (ctx) =>
             {
                 debug!(" using {} statistics", self.fitness_statistics.len());
+
+                self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved()));
+
                 ctx.evaluate(&self.fitness_statistics);
                 self.set_raw(ctx.get_raw());
                 //TODO: Get weights from somewhere

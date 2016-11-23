@@ -468,6 +468,7 @@ impl Morphology
                                self.original_chromosome[i][3] ])
         }
 
+        debug!("UUU");
         let mut link_chromosome = [0; 4];
 
         for lc in 0..cross_point_allele
@@ -477,6 +478,7 @@ impl Morphology
 
         let link_byte;
 
+        debug!("XXX");
         // make the mask u16 to allow space for overflowing
         let mut mask : u16 = ( 1 << (cross_point_bit+1)) - 1;
         mask = mask << (8 - cross_point_bit);
@@ -487,14 +489,17 @@ impl Morphology
 
         for lc in cross_point_allele..4
         {
-            link_chromosome[lc] = other.original_chromosome[cross_point_chromosome][lc];
+            link_chromosome[lc] = other.original_chromosome[cross_point_chromosome_2][lc];
         }
 
-        println!("{:X} {:X}", mask as u8, mask_2 as u8);
+        //debug!("{:X} {:X}", mask as u8, mask_2 as u8);
+        debug!("XXX");
         link_byte = ((mask as u8) & (self.original_chromosome[cross_point_chromosome][cross_point_allele])) +
                     ((mask_2 as u8) & (other.original_chromosome[cross_point_chromosome_2][cross_point_allele]));
         link_chromosome[cross_point_allele] = link_byte;
         chromosomes.push(link_chromosome);
+
+        debug!("XXX");
 
 
         for j in cross_point_chromosome_2 + 1..other.original_chromosome.len()
@@ -505,11 +510,10 @@ impl Morphology
                                other.original_chromosome[j][3] ])
         }
 
-        println!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit,
-                 cross_point_chromosome_2);
-        println!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome],
+        debug!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit, cross_point_chromosome_2);
+        debug!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome],
                  other.original_chromosome[cross_point_chromosome_2]);
-        println!("{}", link_byte);
+        debug!("{}", link_byte);
 
         Morphology::new(&chromosomes, &creation_ctx.trans_table)
     }
@@ -638,7 +642,7 @@ mod test
         assert_eq!((3, 2), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
         assert_eq!(morph.original_chromosome[1][1], v2);
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
     #[test]
@@ -654,7 +658,7 @@ mod test
         let morph = Morphology::new(&chromosomes, &TranslationTable::new());
         assert_eq!((3, 1), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
     #[test]
@@ -672,9 +676,9 @@ mod test
         let morph = Morphology::new(&c1, &TranslationTable::new());
         let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
-        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
+        let child = morph.crossover(&morph_2, &mut PolyminiCreationCtx::empty()); 
 
-        println!("{:?}", child);
+        debug!("{:?}", child);
     }
 
     #[test]
@@ -692,9 +696,9 @@ mod test
         let morph = Morphology::new(&c1, &TranslationTable::new());
         let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
-        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
+        let child = morph.crossover(&morph_2, &mut PolyminiCreationCtx::empty()); 
 
-        println!("{:?}", child);
+        debug!("{:?}", child);
     }
 
     #[test]
@@ -710,9 +714,9 @@ mod test
                       [0,    0, 0x00, 0x00]];
 
         let mut morph = Morphology::new(&c1, &TranslationTable::new());
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
         morph.mutate(&mut PolyminiRandomCtx::from_seed([5,7,8,9], "".to_string()), &TranslationTable::new());
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
 

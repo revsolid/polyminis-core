@@ -17,18 +17,26 @@ impl Environment
 {
     pub fn new(species_slots: usize, default_sensors: Vec<Sensor>) -> Environment
     {
-        Environment
+        let dimensions = KENVIRONMENT_DIMENSIONS;
+        let mut env = Environment
         {
-            dimensions: KENVIRONMENT_DIMENSIONS,
+            dimensions: dimensions,
             physical_world: PhysicsWorld::new(),
             default_sensors: default_sensors,
             species_slots: species_slots
-        }
+        };
+
+        env.add_object( (0.0, 0.0), (dimensions.0 as u8, 1));
+        env.add_object( (0.0, 0.0), (1, dimensions.1 as u8));
+        env.add_object( (dimensions.0 - 1.0, 0.0), (1, dimensions.1 as u8));
+        env.add_object( (0.0, dimensions.1 - 1.0), (dimensions.0 as u8, 1));
+
+        env
     }
 
     pub fn add_individual(&mut self, polymini: &Polymini)
     {
-        self.physical_world.add(polymini.get_physics(), polymini.get_morphology());
+        self.physical_world.add(polymini.get_physics());
         //TODO: Add to other worlds
     }
 

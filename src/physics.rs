@@ -5,6 +5,7 @@ extern crate ncollide;
 
 use self::nalgebra::{Isometry2,  Point2, Vector1, Vector2, zero};
 use self::nalgebra::{Translation, Rotation};
+use self::nalgebra::{distance};
 
 use self::ncollide::narrow_phase::{ProximityHandler};
 use self::ncollide::query::{Proximity};
@@ -18,7 +19,6 @@ use std::f32::consts;
 use std::cell::{Cell as std_Cell, RefCell as std_RefCell};
 
 use ::actuators::*;
-use ::morphology::*;
 use ::serialization::*;
 use ::types::*;
 use ::uuid::PUUID;
@@ -92,26 +92,29 @@ impl Serializable for StaticCollider
 struct PolyminiPhysicsData
 {
     ppo_type: PPOType,
-    initial_pos: std_Cell<Vector2<f32>>,
+    initial_pos: std_Cell<Isometry2<f32>>,
+    dimensions: std_Cell<Vector2<f32>>,
     collision_events: std_RefCell<Vec<CollisionEvent>>,
 }
 impl PolyminiPhysicsData 
 {
-    fn new_for_polymini(pos: Vector2<f32>) -> PolyminiPhysicsData
+    fn new_for_polymini(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
     {
         PolyminiPhysicsData
         {
             ppo_type: PPOType::Polymini,
-            initial_pos: std_Cell::new(pos),
+            initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
+            dimensions: std_Cell::new(dimensions),
             collision_events: std_RefCell::new(vec![])
         }
     }
-    fn new_static_object(pos: Vector2<f32>) -> PolyminiPhysicsData
+    fn new_static_object(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
     {
         PolyminiPhysicsData
         {
             ppo_type: PPOType::StaticObject,
-            initial_pos: std_Cell::new(pos),
+            initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
+            dimensions: std_Cell::new(dimensions),
             collision_events: std_RefCell::new(vec![])
         }
     }
@@ -150,6 +153,7 @@ impl PhysicsActionAccumulator
             Direction::ROTATION =>
             {
                 //self.spin += impulse;
+                // Error?
             }
             _ => panic!("Incorrect direction for impulse {:?}", dir)
         }
@@ -233,13 +237,15 @@ pub struct Physics
 impl Physics
 {
     // Private
-    fn shapes_from_morphology(m: &Morphology) -> Compound2<f32>
+    fn build_bounding_box(&self) -> Compound2<f32>
     {
-        // First pass, shape = box of dimensions = Morph.dimensions
+        // First pass, shape = box of dimensions = Physics.dimensions
 
-        // Shapes are anchored in the center (unlike Morph which is top-left anchored)
+        // Shapes are anchored in the center (unlike Physics which is top-left anchored)
         // so we need to correct for that
-        let c_dimensions = (m.get_dimensions().0 as f32 / 2.0, m.get_dimensions().1 as f32 / 2.0);
+        let c_dimensions = (self.ncoll_dimensions.x as f32 / 2.0, self.ncoll_dimensions.y as f32 / 2.0);
+
+
         let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
                                                               c_dimensions.1 as f32)));
         let iso = Isometry2::new(zero(), zero());
@@ -271,15 +277,26 @@ impl Physics
         }
     }
 
-    pub fn reset(&mut self)
+    pub fn reset(&mut self, pos: (f32, f32))
     {
-        self.ncoll_pos = self.ncoll_starting_pos;
+        self.ncoll_pos.x = pos.0 + self.ncoll_dimensions.x / 2.0;
+        self.ncoll_pos.y = pos.1 + self.ncoll_dimensions.y / 2.0;
     }
 
+    pub fn get_starting_pos(&self) -> (f32, f32)
+    {
+        (self.ncoll_starting_pos.x - self.ncoll_dimensions.x / 2.0,
+         self.ncoll_starting_pos.y - self.ncoll_dimensions.y / 2.0)
+    }
     pub fn get_pos(&self) -> (f32, f32)
     {
         (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0,
          self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
+    }
+
+    pub fn get_distance_moved(&self) -> f32
+    {
+        nalgebra::distance(self.ncoll_pos.as_point(), self.ncoll_starting_pos.as_point())
     }
 
     pub fn get_orientation(&self) -> Direction 
@@ -399,6 +416,7 @@ pub struct PhysicsWorld
 {
     world: CollisionWorld2<f32, PolyminiPhysicsData>,
     static_objects: Vec<StaticCollider>,
+    dimensions: (f32, f32),
 
     //
     polyminis_cgroup: CollisionGroups,
@@ -407,6 +425,11 @@ pub struct PhysicsWorld
 impl PhysicsWorld
 {
     pub fn new() -> PhysicsWorld
+    {
+        PhysicsWorld::new_with_dimensions((100.0, 100.0))
+    }
+
+    pub fn new_with_dimensions(dimensions: (f32, f32)) -> PhysicsWorld
     {
         let mut col_w = CollisionWorld::new(0.02, false);
 
@@ -423,6 +446,7 @@ impl PhysicsWorld
                                   static_objects: vec![],
                                   polyminis_cgroup: pcg,
                                   objects_cgroup: ocg,
+                                  dimensions: dimensions,
         };
         ph_w
     }
@@ -430,36 +454,38 @@ impl PhysicsWorld
     pub fn add_object(&mut self, uuid: PUUID, position: (f32, f32),  dimensions: (u8, u8))
     {
         let nc_dim = dimensions_sim_to_ncoll(dimensions);
-        let rect = Cuboid::new(nc_dim);
+        let rect = Cuboid::new( Vector2::new(nc_dim.x / 2.0, nc_dim.y / 2.0) );
         let nc_pos = Vector2::new(position.0 + nc_dim.x / 2.0, position.1 + nc_dim.y / 2.0);
 
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()),
                             ShapeHandle2::new(rect),
                             self.objects_cgroup, GeometricQueryType::Proximity(0.0),
-                            PolyminiPhysicsData::new_static_object(nc_pos));
+                            PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
         self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
     }
 
-    pub fn add(&mut self, physics: &Physics, morph: &Morphology)
+    pub fn add(&mut self, physics: &Physics)
     {
-        let shapes = Physics::shapes_from_morphology(morph);
+        let shapes = physics.build_bounding_box();
 
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
                             self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
-                            PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos))
-
+                            PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions));
+        self.finish_adding();
     }
 
     pub fn apply(&mut self, id: usize, action: Action)
     {
-        let new_pos;
+        let mut new_pos;
         {
+            //TODO: We need to track rotation as well
+            // Idea: As we apply an action, create the 'UNDO' version of it 
             let p_obj = self.world.collision_object(id).unwrap();
-            p_obj.data.initial_pos.set(p_obj.position.translation);
+            p_obj.data.initial_pos.set(p_obj.position);
             match action
             {
                 Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>
@@ -469,7 +495,10 @@ impl PhysicsWorld
                     {
                         m = -1.0;
                     }
-                    new_pos = p_obj.position.prepend_rotation(&(Vector1::new(consts::FRAC_PI_2) * m));
+                    debug!("Before rotation {}", p_obj.position.translation);
+                    new_pos = p_obj.position;
+                    new_pos.set_rotation((Vector1::new(consts::FRAC_PI_2) * m));
+                    debug!("Before rotation {}", new_pos.translation);
                 },
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse, _)) =>
                 {
@@ -478,7 +507,7 @@ impl PhysicsWorld
                     {
                         m = -1.0;
                     }
-                    new_pos = p_obj.position.append_translation(&Vector2::new(0.0, m*1.0));
+                    new_pos = p_obj.position.prepend_translation(&Vector2::new(0.0, m*1.0));
                 },
                 Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, impulse, _)) =>
                 {
@@ -516,31 +545,88 @@ impl PhysicsWorld
     // Placement means we retry positioning objects that are colliding 
     fn step_internal(&mut self, record_events_param: bool, placement: bool)
     {
+        info!("Physics Step Internal");
         let mut record_events = record_events_param;
 
         // Idea: We handle collisions, and undo movements and reupdate
         // so things stay in the same place but the collision is recorded
         //
+        let mut loops = 0;
+        let max_loops = if placement { 100 } else { 10 };
         loop
         {
             self.world.update();
             let mut collisions = false;
             let mut corrections = vec![];
-            for coll_data in self.world.proximity_pairs()
+            for (pair_inx, coll_data) in self.world.proximity_pairs().enumerate()
             {
-                let (object_1, object_2, _) = coll_data;
+                let (object_1, object_2, bx_prox_detect) = coll_data;
+
+
+                match bx_prox_detect.proximity()
+                {
+                    Proximity::Intersecting =>
+                    {
+                        debug!("Intersecting");
+                    },
+                    Proximity::WithinMargin =>
+                    {
+                        debug!("Collision: WithinMargin");
+                        continue
+                    },
+                    Proximity::Disjoint =>
+                    {
+                        debug!("Collision: Disjoint");
+                        continue
+                    },
+                }
+
                 let mut n_pos = object_1.position;
-                n_pos.translation = object_1.data.initial_pos.get();
+                n_pos = object_1.data.initial_pos.get();
 
                 let mut n_pos_2 = object_2.position;
-                n_pos_2.translation = object_2.data.initial_pos.get();
+                n_pos_2 = object_2.data.initial_pos.get();
 
 
                 if (placement)
                 {
-                    n_pos.translation +=  Vector2::new(1.0, 0.0);
-                    object_1.data.initial_pos.set(n_pos.translation);
-                    corrections.push((object_1.uid, n_pos));
+                    let m = ( loops as f32 / 4.0 ).floor();
+                    let displacements = vec![Vector2::new( m,     0.0),
+                                             Vector2::new( 0.0,  -1.0*m),
+                                             Vector2::new(-1.0*m, 0.0),
+                                             Vector2::new( 0.0,   m)];
+                    n_pos.translation +=  displacements[ loops % displacements.len() ];
+                    debug!("New Position: {}",
+                           n_pos.translation.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+
+                    let left   = n_pos.translation.x;
+                    let right  = n_pos.translation.x;
+                    let bottom = n_pos.translation.y;
+                    let top    = n_pos.translation.y;
+
+                    if left < 0.0 || right > 100.0 
+                    {
+                        n_pos.translation.x = object_1.data.dimensions.get().x; 
+                    }
+
+                    if bottom < 0.0 || top > 100.0 
+                    {
+                        n_pos.translation.y = object_1.data.dimensions.get().y; 
+                    }
+
+                    match object_1.data.ppo_type
+                    {
+                        PPOType::Polymini =>
+                        {
+                            object_1.data.initial_pos.set(n_pos);
+                            corrections.push((object_1.uid, n_pos));
+                        }
+                        PPOType::StaticObject =>
+                        {
+                            object_2.data.initial_pos.set(n_pos);
+                            corrections.push((object_2.uid, n_pos));
+                        }
+                    }
                 }
                 else
                 {
@@ -548,7 +634,6 @@ impl PhysicsWorld
                     corrections.push((object_2.uid, n_pos_2));
                 }
 
-                // Record Event
                 let ev = CollisionEvent
                 {
                     id_1: object_1.uid,
@@ -559,6 +644,7 @@ impl PhysicsWorld
 
                 debug!("{}", 
                        ev.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+                debug!("Object Dimensions {} - {}", object_1.data.dimensions.get(), object_2.data.dimensions.get());
 
                 if record_events
                 {
@@ -581,6 +667,13 @@ impl PhysicsWorld
             {
                 break;
             }
+
+            loops += 1;
+            if loops == max_loops 
+            {
+                panic!("Probably caught in endless loop");
+            }
+            debug!("Looping");
         }
     }
 
@@ -613,10 +706,56 @@ impl Serializable for PhysicsWorld
 #[cfg(test)]
 mod test
 {
+    extern crate env_logger;
     use super::*;
     use ::actuators::*;
+    use ::genetics::*;
+    use ::morphology::*;
     use ::types::*;
 
+
+    #[test]
+    fn test_placement()
+    {
+        let mut physical_world = PhysicsWorld::new();
+        let mut physics = Physics::new(1, (4, 4), 0.0, 0.0, 0); 
+        physical_world.add_object(2, (0.0, 0.0), (2, 2));
+        physical_world.add(&physics);
+        physics.update_state(&physical_world);
+
+        assert_eq!(physics.get_pos(), (3.0, -1.0));
+    }
+
+    #[test]
+    fn test_rotation_and_translation()
+    {
+        let _ = env_logger::init();
+        let mut physical_world = PhysicsWorld::new();
+        let mut physics = Physics::new(1, (4, 4), 0.0, 0.0, 0); 
+        physical_world.add(&physics);
+        physics.update_state(&physical_world);
+
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                       &mut physical_world);
+
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (1.0, 0.0));
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 2.0))],
+                       &mut physical_world);
+        assert_eq!(physics.get_pos(), (1.0, 0.0));
+    }
+
+    fn test_physics_undoing()
+    {}
 
     fn test_movement_accumulator_master(actions: ActionList, expected_impulse: f32, expected_direction: Direction)
     {
