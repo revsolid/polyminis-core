@@ -88,9 +88,13 @@ pub struct PGAConfig
     //  Percentage of individuals that pass from generation
     //  to generation
     pub percentage_elitism: f32,
+    pub percentage_mutation: f32,
 
     // Evaluation Context
-    pub fitness_evaluators: Vec<FitnessEvaluator>
+    pub fitness_evaluators: Vec<FitnessEvaluator>,
+
+    // Genome Length
+    pub genome_size: usize,
 
 }
 impl PGAConfig
@@ -142,7 +146,8 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
 
     pub fn evaluate_population(&mut self)
     {
-        self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic ]);
+        // TODO: Instincts should come from somehwere else like a config
+        self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic, Instinct::Hoarding, Instinct::Herding, Instinct::Predatory ]);
     }
 
     pub fn population(&mut self) -> &mut GAPopulation<T>
@@ -167,7 +172,15 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
                                                                             &mut context.get_random_ctx());
             let ind_2 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals,
                                                                             &mut context.get_random_ctx());
-            new_individuals.push(*ind_1.crossover(ind_2, context));
+
+            let mut new_individual = *ind_1.crossover(ind_2, context);
+            let mut_probability = context.get_random_ctx().gen_range(0.0, 1.0);
+            if (mut_probability < self.config.percentage_mutation)
+            {
+                info!("Mutating Individual");
+                new_individual.mutate(mut_probability, context);
+            }
+            new_individuals.push(new_individual);
         }
 
         // Copy over best individuals from previous gen

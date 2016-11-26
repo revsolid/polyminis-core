@@ -5,21 +5,57 @@ use ::instincts::*;
 use ::morphology::*;
 use ::physics::*;
 use ::serialization::*;
+use ::traits::*;
+use ::types::*;
 use ::uuid::*;
 
 use std::any::Any;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 
 pub struct Stats
 {
     hp: i32,
     energy: i32,
+    speed: usize,
+    total_cells: usize,
     //TODO: combat_stats: CombatStatistics
+}
+impl Stats
+{
+    pub fn new(morph: &Morphology) -> Stats
+    {
+        let sp = Stats::calculate_speed_from(morph);
+        let size = Stats::calculate_size_from(morph);
+        Stats { hp: 0, energy: 0, speed: sp, total_cells: size }
+    }
+    fn calculate_speed_from(morph: &Morphology) -> usize
+    {
+        morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::SpeedTrait)).len()
+    }
+    fn calculate_size_from(morph: &Morphology) -> usize
+    {
+        morph.get_total_cells()
+    }
+}
+impl Serializable for Stats
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("HP".to_owned(), self.hp.to_json());
+        json_obj.insert("Energy".to_owned(), self.energy.to_json());
+        json_obj.insert("Speed".to_owned(), self.speed.to_json());
+        json_obj.insert("Size".to_owned(), self.total_cells.to_json());
+        Json::Object(json_obj)
+    }
 }
 
 pub struct Polymini
 {
     uuid: PUUID,
+    dead: bool,
 
     morph: Morphology,
     control: Control,
@@ -59,11 +95,15 @@ impl Polymini
     {
         let uuid = PolyminiUUIDCtx::next();
         let dim = morphology.get_dimensions();
+
+        let stats = Stats::new(&morphology);
+
         Polymini { uuid: uuid,
+                   dead: false,
                    morph: morphology,
                    control: control,
                    physics: Physics::new(uuid, dim, pos.0, pos.1, 0),
-                   stats: Stats { hp: 0, energy: 0 },
+                   stats: stats,
                    fitness_statistics: vec![],
                    raw_score: 0.0,
                    species_weighted_fitness: 0.0 }
@@ -78,21 +118,42 @@ impl Polymini
     }
     pub fn sense_phase(&mut self, sp: &SensoryPayload)
     {
+        if self.dead
+        {
+            return
+        }
         self.control.sense(sp);
     }
     pub fn think_phase(&mut self)
     {
+        if self.dead
+        {
+            return
+        }
         self.control.think();
     }
-    pub fn act_phase(&mut self, phys_world: &mut PhysicsWorld)
+    pub fn act_phase(&mut self, substep: usize, phys_world: &mut PhysicsWorld)
     {
+        if self.dead
+        {
+            return
+        }
         let actions = self.control.get_actions();
-
+       
         debug!("Action List Len: {}", actions.len());
         // Feed them into other systems
-        self.physics.act_on(&actions, phys_world);
+        
+        let mut record_move_statistic = true;
+        if substep <= self.get_speed()
+        {
+            self.physics.act_on(&actions, phys_world);
+        }
+        else
+        {
+            record_move_statistic = false;
+        }
 
-        let mut move_already_recorded = false;
+
         for action in actions
         {
             // TODO: Filter actions in a cleaner way
@@ -101,11 +162,12 @@ impl Polymini
                 Action::MoveAction(_) =>
                 {
                     if !self.physics.get_move_succeded() ||
-                        move_already_recorded
+                       !record_move_statistic 
                     {
                         continue
                     }
-                    move_already_recorded = true;
+                    // Only record one action, even thou several actuators can output move actions
+                    record_move_statistic = false;
                 },
                 _ => {}
             }
@@ -139,6 +201,11 @@ impl Polymini
         self.fitness_statistics.clear();
     }
 
+    pub fn die(&mut self, death_context: &DeathContext)
+    {
+        self.dead = true;
+    }
+
     pub fn get_id(&self) -> PUUID 
     {
         self.uuid
@@ -146,6 +213,10 @@ impl Polymini
 
     pub fn consequence_physical(&mut self, world: &PhysicsWorld)
     {
+        if self.dead
+        {
+            return
+        }
         self.physics.update_state(world);
     }
 
@@ -164,10 +235,17 @@ impl Polymini
         &self.control
     }
 
+    pub fn get_speed(&self) -> usize
+    {
+        self.stats.speed
+    }
+
+
     pub fn add_global_statistics(&mut self, global_stats: &mut Vec<FitnessStatistic>)
     {
         self.fitness_statistics.append(global_stats);
     }
+
 }
 
 
@@ -178,18 +256,54 @@ impl Serializable for Polymini
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("id".to_owned(), self.get_id().to_json());
-        json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
-        json_obj.insert("Raw".to_owned(), self.raw().to_json());
+        json_obj.insert("ID".to_owned(), self.get_id().to_json());
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            json_obj.insert("morphology".to_owned(), self.get_morphology().serialize(ctx));
+            json_obj.insert("Morphology".to_owned(), self.get_morphology().serialize(ctx));
         }
 
-        json_obj.insert("control".to_owned(), self.get_control().serialize(ctx));
+        json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
 
-        json_obj.insert("physics".to_owned(), self.get_physics().serialize(ctx));
+        json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
+
+
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
+        {
+            json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
+            json_obj.insert("Raw".to_owned(), self.raw().to_json());
+            json_obj.insert("Stats".to_owned(), self.stats.serialize(ctx));
+            //
+            let mut stats_json_obj = pmJsonObject::new();
+            let mut stats_dict = HashMap::new();
+
+            warn!("Len of Statistics: {}", self.fitness_statistics.len());
+            for stat in &self.fitness_statistics
+            {
+                match stats_dict.entry(stat)
+                {
+                    Entry::Occupied(mut o) =>
+                    {
+                        let v = *o.get();
+                        o.insert( v + 1 );
+                    },
+                    Entry::Vacant(mut o) =>
+                    {
+                        o.insert( 1 );
+                    }
+                }
+            }
+
+            for (k,v) in stats_dict.iter()
+            {
+                stats_json_obj.insert(k.to_string(), v.to_json());
+            }
+
+            
+            json_obj.insert("FitnessStatistics".to_owned(), Json::Object(stats_json_obj));
+        }
+
         Json::Object(json_obj)
     }
 }
@@ -228,8 +342,12 @@ impl PolyminiGAIndividual for Polymini
             Some (creation_ctx) =>
             {
             // Structural mutation should happen first
-                //self.morph.mutate(creation_ctx.random_context, &creation_ctx.trans_table);
-                //self.control.mutate(creation_ctx.random_context, self.morph.get_sensor_list(), self.morph.get_actuator_list());
+            
+                self.morph.mutate(&mut creation_ctx.random_context, &creation_ctx.trans_table);
+                let mut sensor_list = creation_ctx.default_sensors.clone();
+                self.control.mutate(&mut creation_ctx.random_context, 
+                                    sensor_list, self.morph.get_actuator_list());
+                self.stats = Stats::new(&self.morph);
             },
             None =>
             {
@@ -247,7 +365,15 @@ impl PolyminiGAIndividual for Polymini
             {
                 debug!(" using {} statistics", self.fitness_statistics.len());
 
-                self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved()));
+                self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved() as u32));
+
+                self.fitness_statistics.push(FitnessStatistic::TotalCells(self.stats.total_cells));
+
+                if (self.dead)
+                {
+                    // TODO: Death reason, how long into the simulation before it died
+                    self.fitness_statistics.push(FitnessStatistic::Died);
+                }
 
                 ctx.evaluate(&self.fitness_statistics);
                 self.set_raw(ctx.get_raw());

@@ -11,8 +11,6 @@ pub struct Species
 {
     name: String,
     ga: PolyminiGeneticAlgorithm<Polymini>,
-    //translation_table: TranslationTable,
-    //default_sensor_list: Vec<Sensor>
     creation_context: PolyminiCreationCtx,
 }
 impl Species
@@ -24,7 +22,8 @@ impl Species
 
         // TODO: This configuration should come from somewhere 
         let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
-                              percentage_elitism: 0.2, fitness_evaluators: vec![] };
+                              percentage_elitism: 0.2, fitness_evaluators: vec![],
+                              percentage_mutation: 0.1, genome_size: 8 };
 
         //
 
@@ -48,7 +47,7 @@ impl Species
         for i in 0..pgaconfig.population_size
         {
             let morph = Morphology::new_random(&translation_table,
-                                               &mut ctx);
+                                               &mut ctx, pgaconfig.genome_size);
             let pos = (ctx.gen_range(0, 100) as f32, ctx.gen_range(0, 100) as f32);
 
             let mut sensor_list = default_sensors.clone();
@@ -91,6 +90,11 @@ impl Species
         self.ga.get_population_mut()
     }
 
+    pub fn get_best(&self) -> &Polymini
+    {
+        self.ga.get_population().get_individual(0)
+    }
+
     pub fn evaluate(&mut self)
     {
         self.ga.evaluate_population();
@@ -100,6 +104,17 @@ impl Species
     {
         self.ga.step(&mut self.creation_context);
         self.reset();
+    }
+
+    pub fn get_accum_score(&self) -> f32
+    {
+        //NOTE: Accumulated Score = the raw scores of all the Polyminis from
+        // this species
+        self.ga.get_population().iter().fold( 0.0, |mut accum, ind |
+        {
+            accum += ind.raw();
+            accum
+        })
     }
 
     pub fn dump_random_ctx(&mut self)

@@ -177,7 +177,6 @@ impl TranslationTable
         let mut tier: u8 = 1;
         let mut trait_num = ( ( gp & (0xFF<<8) ) >> 8 ) as u8;
 
-        // Basic Tier Never Chains
         if trait_num == TIER_ONE_TO_TWO_CHAIN
         {
             //TIER II
@@ -365,11 +364,11 @@ impl Morphology
         Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
     }
 
-    pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx) -> Morphology
+    pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx, genome_size: usize) -> Morphology
     {
         let mut random_chromosomes = vec![];
 
-        for i in 0..15
+        for i in 0..genome_size
         {
             random_chromosomes.push([ random_ctx.gen::<u8>(),
                                       random_ctx.gen::<u8>(),
@@ -572,6 +571,27 @@ impl Morphology
             }
         }
         sensors
+    }
+
+    pub fn get_traits_of_type(&self, trait_type: PolyminiTrait) -> Vec<PolyminiTrait>
+    {
+        let mut to_ret = vec![];
+        self.representations.cells.iter().fold(&mut to_ret, |accum, cell|
+        {
+            debug!("Trait Type {:?}", trait_type);
+            debug!("Trait Type (cell) {:?}", cell.pm_trait.pm_trait);
+            if cell.pm_trait.pm_trait == trait_type
+            {
+                accum.push(cell.pm_trait.pm_trait);
+            }
+            accum
+        });
+        to_ret
+    }
+
+    pub fn get_total_cells(&self) -> usize
+    {
+        self.representations.cells.len()
     }
 }
 impl Serializable for Morphology

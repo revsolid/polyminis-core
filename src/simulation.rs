@@ -4,6 +4,7 @@ use ::physics::*;
 use ::polymini::*;
 use ::serialization::*;
 use ::species::*;
+use ::types::*;
 use ::uuid::*;
 
 // NOTE:
@@ -60,6 +61,7 @@ pub struct SimulationEpoch
 {
     environment: Environment,
     species: Vec<Species>,
+    proportions: Vec<f32>,
     steps: usize,
     max_steps: usize,
 }
@@ -67,12 +69,12 @@ impl SimulationEpoch
 {
     pub fn new() -> SimulationEpoch
     {
-        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], steps: 0, max_steps: 100 } 
+        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100 } 
     }
 
     pub fn new_with(environment: Environment, max_steps: usize) -> SimulationEpoch
     {
-        SimulationEpoch { environment: environment, species: vec![], steps: 0,
+        SimulationEpoch { environment: environment, species: vec![], proportions: vec![], steps: 0,
                           max_steps: max_steps } 
     }
 
@@ -98,16 +100,39 @@ impl SimulationEpoch
         
         // Environment Registration
         debug!("Adding Species - Start Loop");
-        for ind in sp.get_generation_mut().iter()
+        for i in 0..sp.get_generation().size() 
         {
-            self.environment.add_individual(ind);
+            debug!("{}", i);
+            let ind = &mut sp.get_generation_mut().get_individual_mut(i);
+            // An individual that can't be added to the environment is marked as
+            // death to eliminate those genes from the pool as soon as possible
+            if !self.environment.add_individual(ind)
+            {
+                ind.die(&DeathContext::new(DeathReason::Placement, 0));
+            }
         }
         debug!("Adding Species - Done Loop");
 
-        debug!("Adding Species - Physics World Update");
-
         // Once fully registered we add them to the list of species
         self.species.push(sp);
+
+
+        // Re-calculate proportions 
+        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
+        {
+            accum += species.get_accum_score();
+            accum
+        }); 
+
+        // Proportions
+        self.proportions = self.species.iter().map( | ref species | species.get_accum_score() / total_species_scores as f32 ).collect();
+
+        let new_prop = 1.0 / self.species.len() as f32;
+    }
+    
+    pub fn get_species(&self) -> &Vec<Species>
+    {
+        &self.species
     }
 
     pub fn evaluate_species(&mut self)
@@ -142,6 +167,20 @@ impl SimulationEpoch
         let mut new_epoch = SimulationEpoch::new_with(Environment::new(self.environment.get_species_slots(),
                                                                        self.environment.default_sensors.clone()),
                                                       self.max_steps);
+
+
+        // Calculate Proportions of the species' fitness
+        //
+        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
+        {
+            accum += species.get_accum_score();
+            accum
+        }); 
+
+
+        // Proportions
+        self.proportions = self.species.iter().map( |ref species|  species.get_accum_score() / total_species_scores as f32 ).collect();
+
         debug!("Advancing Epoch - Reinserting Species");
         for n_s in new_epoch_species
         {
@@ -154,11 +193,15 @@ impl SimulationEpoch
 
     pub fn step(&mut self)
     {
-        self.init_phase();
-        self.sense_phase();
-        self.think_phase();
-        self.act_phase();
-        self.consequence_phase();
+        //TODO: Configurable
+        for i in 0..4
+        {
+            self.init_phase();
+            self.sense_phase();
+            self.think_phase();
+            self.act_phase(i);
+            self.consequence_phase();
+        }
         self.steps += 1;
     }
 
@@ -201,7 +244,7 @@ impl SimulationEpoch
             }
         }
     }
-    fn act_phase(&mut self)
+    fn act_phase(&mut self, substep: usize)
     {
         for s in &mut self.species
         {
@@ -209,7 +252,7 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.act_phase(&mut self.environment.physical_world);
+                polymini.act_phase(substep, &mut self.environment.physical_world);
             }
         }
     }

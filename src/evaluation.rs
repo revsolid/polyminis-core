@@ -1,8 +1,11 @@
 use ::actuators::*;
 use ::instincts::*;
+use ::serialization::*;
 use std::collections::HashMap;
+use std::fmt;
 
 //TODO Maybe use naming or sub-enums?
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FitnessStatistic
 {
     // Util and Control
@@ -13,7 +16,10 @@ pub enum FitnessStatistic
     ConsumedFoodSource,
 
     // Epoch-Wide
-    DistanceTravelled(f32),
+    DistanceTravelled(u32),
+
+    // Body
+    TotalCells(usize),
 
     Died,
 }
@@ -34,12 +40,33 @@ impl FitnessStatistic
         }
     }
 }
+impl Serializable for FitnessStatistic
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        self.to_string().to_json()
+    }
+}
+impl fmt::Display for FitnessStatistic 
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        fmt::Debug::fmt(self, f)
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum FitnessEvaluator
 {
+    // Movement
     OverallMovement,
     DistanceTravelled,
+
+    // Shape
+    Shape,
+
+    // Basic Stuff
+    Alive,
 }
 impl FitnessEvaluator
 {
@@ -78,7 +105,7 @@ impl FitnessEvaluator
                                                   {
                                                       &FitnessStatistic::DistanceTravelled(dist) =>
                                                       {
-                                                         accum += (0.25 * dist);
+                                                         accum += (2.5 * dist as f32);
                                                       },
                                                       _ => {}
                                                   }
@@ -88,6 +115,45 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Distance Travelled", v, i);
                 (i, v)
             },
+            FitnessEvaluator::Shape =>
+            {
+                let i = Instinct::Hoarding;
+                let v = statistics.iter().fold(0.0,
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::TotalCells(c) =>
+                                                      {
+                                                         accum += 10.0 - (10.0 - c as f32).abs();
+                                                      },
+                                                      _ => {}
+                                                  }
+                                                  accum
+                                               });
+                debug!("Evaluated {} for {} due to Shape", v, i);
+                (i,v)
+            },
+            FitnessEvaluator::Alive =>
+            {
+                let i = Instinct::Basic;
+                let v = statistics.iter().fold(10.0,
+
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::Died =>
+                                                      {
+                                                          accum = 0.0;
+                                                      },
+                                                      _ => {}
+                                                  }
+                                                  accum
+                                               });
+                debug!("Evaluated {} for {} due to Staying Alive", v, i);
+                (i,v)
+            }
         }
     }
 }
@@ -142,7 +208,15 @@ impl PolyminiEvaluationCtx
                             });
         }
         debug!("Accumulated {}", res);
-        res
+
+        if res >= 0.0
+        {
+            res
+        }
+        else
+        {
+            0.0
+        }
     }
 }
 

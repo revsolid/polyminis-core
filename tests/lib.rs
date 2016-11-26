@@ -20,6 +20,7 @@ mod test
     use polyminis_core::traits::*;
 
     use std::collections::{HashMap, HashSet};
+    use std::time::{Duration, Instant};
 
     #[test]
     pub fn main_test()
@@ -36,6 +37,7 @@ mod test
         let mut active_table_1 = HashSet::new();
         active_table_1.insert( (TraitTier::TierI, 3) );
         active_table_1.insert( (TraitTier::TierI, 2) );
+        active_table_1.insert( (TraitTier::TierI, 1) );
 
         let mut active_table_2 = HashSet::new();
         active_table_2.insert( (TraitTier::TierI, 3) );
@@ -49,7 +51,9 @@ mod test
                                     Sensor::new(SensorTag::LastMoveSucceded, 1)];
 
         let evaluators = vec![ FitnessEvaluator::OverallMovement,
-                               FitnessEvaluator::DistanceTravelled ];
+                               FitnessEvaluator::DistanceTravelled,
+                               FitnessEvaluator::Shape,
+                               FitnessEvaluator::Alive, ];
 
         let translation_table_species_1 = TranslationTable::new_from(&master_translation_table, &active_table_1);
         let translation_table_species_2 = TranslationTable::new_from(&master_translation_table, &active_table_2);
@@ -59,55 +63,80 @@ mod test
 
         let gens_per_epoch = 100;
 
-        let cfg = PGAConfig { max_generations: gens_per_epoch, population_size: 10,
-                              percentage_elitism: 0.2, fitness_evaluators: evaluators };
+        let cfg = PGAConfig { max_generations: gens_per_epoch, population_size: 50,
+                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
 
-        info!("Creating Species");
+        trace!("Creating Species");
         let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,
                                    &env.default_sensors, cfg);
 
-        info!("Adding Species");
+        trace!("Adding Species");
         let mut epoch = SimulationEpoch::new_with(env, gens_per_epoch as usize);
         epoch.add_species(ss);
         
-        info!("Swaping Species:");
+        trace!("Swaping Species:");
         sim.swap_epoch(epoch);
 
-        info!("Running Epoch:");
+        trace!("Running Epoch:");
 
         
         debug!("{}", sim.get_epoch()
                     .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
 
-        for i in 0..5
+        // TODO: Make this an easy to parameterize thing
+        let total_epochs = 20;
+        let mut serialization_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG);
+        for i in 0..total_epochs
         {
+            let now = Instant::now();
+            info!("Starting Epoch");
             loop 
             {
-                info!("Before Step:");
+                debug!("Before Step:");
                 if sim.step()
                 {
                     break;
                 }
-                info!("After Step:");
+                debug!("After Step: ");
                 debug!("{}", sim.get_epoch()
-                            .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+                            .serialize(&mut serialization_ctx));
+
+
+                for s in sim.get_epoch().get_species()
+                {
+                    info!("Best Individual of Species {} {}", s.get_name(),
+                          s.get_best().serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DYNAMIC)));
+                }
+
             }
-            info!("After Epoch");
-            info!("{}", sim.get_epoch()
-                        .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+            info!("After Epoch - {}s {}ms", now.elapsed().as_secs(), now.elapsed().subsec_nanos() / 1000000);
+            trace!("{}", sim.get_epoch()
+                        .serialize(&mut serialization_ctx)); 
 
 
             sim.get_epoch_mut().evaluate_species(); 
 
-            info!("After Eval");
-            info!("{}", sim.get_epoch()
-                        .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+            trace!("After Eval");
+            trace!("{}", sim.get_epoch()
+                        .serialize(&mut serialization_ctx));
 
-            sim.advance_epoch();
+            for s in sim.get_epoch().get_species()
+            {
+                info!("{}", s.get_best().serialize(&mut serialization_ctx));
+            }
 
-            info!("After Advancing Epoch");
-            info!("{}", sim.get_epoch()
-                        .serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+            if i < total_epochs - 1
+            {
+                sim.advance_epoch();
+                trace!("After Advancing Epoch");
+                trace!("{}", sim.get_epoch()
+                       .serialize(&mut serialization_ctx));
+            }
+        }
+
+        for s in sim.get_epoch().get_species()
+        {
+            info!("{}", s.get_best().serialize(&mut serialization_ctx));
         }
 
         sim.get_epoch_mut().dump_species_random_ctx();

@@ -7,8 +7,7 @@ use self::nalgebra::{Isometry2,  Point2, Vector1, Vector2, zero};
 use self::nalgebra::{Translation, Rotation};
 use self::nalgebra::{distance};
 
-use self::ncollide::narrow_phase::{ProximityHandler};
-use self::ncollide::query::{Proximity};
+use self::ncollide::query::{Proximity, Contact};
 use self::ncollide::shape::{Compound, Compound2, Cuboid, Shape2, ShapeHandle2};
 use self::ncollide::world::{CollisionWorld, CollisionWorld2,
                             CollisionGroups, CollisionObject2, GeometricQueryType};
@@ -95,6 +94,7 @@ struct PolyminiPhysicsData
     initial_pos: std_Cell<Isometry2<f32>>,
     dimensions: std_Cell<Vector2<f32>>,
     collision_events: std_RefCell<Vec<CollisionEvent>>,
+    looped: std_Cell<bool>,
 }
 impl PolyminiPhysicsData 
 {
@@ -105,7 +105,8 @@ impl PolyminiPhysicsData
             ppo_type: PPOType::Polymini,
             initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
             dimensions: std_Cell::new(dimensions),
-            collision_events: std_RefCell::new(vec![])
+            collision_events: std_RefCell::new(vec![]),
+            looped: std_Cell::new(false),
         }
     }
     fn new_static_object(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
@@ -115,7 +116,8 @@ impl PolyminiPhysicsData
             ppo_type: PPOType::StaticObject,
             initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
             dimensions: std_Cell::new(dimensions),
-            collision_events: std_RefCell::new(vec![])
+            collision_events: std_RefCell::new(vec![]),
+            looped: std_Cell::new(false),
         }
     }
 }
@@ -279,8 +281,12 @@ impl Physics
 
     pub fn reset(&mut self, pos: (f32, f32))
     {
-        self.ncoll_pos.x = pos.0 + self.ncoll_dimensions.x / 2.0;
-        self.ncoll_pos.y = pos.1 + self.ncoll_dimensions.y / 2.0;
+        let n_pos = Vector2::new( pos.0 + self.ncoll_dimensions.x / 2.0,
+                                  pos.1 + self.ncoll_dimensions.y / 2.0 );
+        info!("Reseting Physics - New Pos: {} (Old Pos: {}", n_pos, self.ncoll_pos);
+
+        self.ncoll_pos = n_pos;
+        self.ncoll_starting_pos = n_pos;
     }
 
     pub fn get_starting_pos(&self) -> (f32, f32)
@@ -357,6 +363,9 @@ impl Physics
             self.collisions.push(*ev);
         }
 
+        // Set our new initial position
+        o.data.initial_pos.set(o.position);
+
         // Nuke'm
         o.data.collision_events.borrow_mut().clear();
 
@@ -368,48 +377,29 @@ impl Serializable for Physics
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("id".to_string(), self.uuid.to_json());
+        json_obj.insert("ID".to_owned(), self.uuid.to_json());
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            json_obj.insert("dimensions".to_string(), serialize_vector(self.ncoll_dimensions));
+            json_obj.insert("Dimensions".to_owned(), serialize_vector(self.ncoll_dimensions));
+            json_obj.insert("StartingPos".to_owned(), self.get_starting_pos().to_json());
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
-            json_obj.insert("position".to_string(), self.get_pos().to_json());
+            json_obj.insert("Position".to_owned(), self.get_pos().to_json());
             let mut ev_arr = pmJsonArray::new();
             for ev in &self.collisions
             {
                 ev_arr.push(ev.serialize(ctx));
             }
-            json_obj.insert("collisions".to_string(), Json::Array(ev_arr));
+            json_obj.insert("collisions".to_owned(), Json::Array(ev_arr));
 
-            json_obj.insert("last_action".to_string(), self.last_action.to_json());
+            json_obj.insert("last_action".to_owned(), self.last_action.to_json());
         }
         Json::Object(json_obj)
     }
 }
-
-// Collision Handler
-struct PhysicsWorldCollisionHandler;
-
-impl ProximityHandler<Point2<f32>, Isometry2<f32>, PolyminiPhysicsData> for PhysicsWorldCollisionHandler
-{
-    fn handle_proximity(&mut self,
-                        _: &CollisionObject2<f32, PolyminiPhysicsData>,
-                        _: &CollisionObject2<f32, PolyminiPhysicsData>,
-                        _: Proximity,
-                        new_proximity: Proximity)
-    {
-        if new_proximity ==  Proximity::Intersecting
-        {
-            //
-            //  TODO
-        }
-    }
-}
-
 
 // Physics World
 pub struct PhysicsWorld
@@ -432,8 +422,6 @@ impl PhysicsWorld
     pub fn new_with_dimensions(dimensions: (f32, f32)) -> PhysicsWorld
     {
         let mut col_w = CollisionWorld::new(0.02, false);
-
-        col_w.register_proximity_handler("phyisics_world_collision", PhysicsWorldCollisionHandler);
 
         let mut pcg = CollisionGroups::new();
         pcg.set_membership(&[1]);
@@ -460,32 +448,47 @@ impl PhysicsWorld
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()),
                             ShapeHandle2::new(rect),
-                            self.objects_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.objects_cgroup, GeometricQueryType::Contacts(0.0),
                             PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
         self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
     }
 
-    pub fn add(&mut self, physics: &Physics)
+    pub fn add(&mut self, physics: &Physics) -> bool
     {
         let shapes = physics.build_bounding_box();
 
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
-                            self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.polyminis_cgroup, GeometricQueryType::Contacts(0.0),
                             PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions));
-        self.finish_adding();
+        let v = !self.finish_adding();
+        if v 
+        {
+            error!("Removing {}", physics.uuid);
+            self.remove(physics);
+            self.finish_adding();
+            warn!("Removed");
+            false
+        }
+        else
+        {
+            true
+        }
+    }
+
+    pub fn remove(&mut self, physics: &Physics)
+    {
+        self.world.deferred_remove(physics.uuid);
+        self.world.update();
     }
 
     pub fn apply(&mut self, id: usize, action: Action)
     {
         let mut new_pos;
         {
-            //TODO: We need to track rotation as well
-            // Idea: As we apply an action, create the 'UNDO' version of it 
             let p_obj = self.world.collision_object(id).unwrap();
-            p_obj.data.initial_pos.set(p_obj.position);
             match action
             {
                 Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>
@@ -507,7 +510,7 @@ impl PhysicsWorld
                     {
                         m = -1.0;
                     }
-                    new_pos = p_obj.position.prepend_translation(&Vector2::new(0.0, m*1.0));
+                    new_pos = p_obj.position.append_translation(&Vector2::new(0.0, m*1.0));
                 },
                 Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, impulse, _)) =>
                 {
@@ -531,107 +534,157 @@ impl PhysicsWorld
         self.world.deferred_set_position(id, new_pos)
     }
 
-    pub fn step(&mut self)
+    pub fn step(&mut self) -> bool
     {
-        self.step_internal(true, false);
+        self.step_internal(true, false)
     }
 
-    pub fn finish_adding(&mut self)
+    pub fn finish_adding(&mut self) -> bool
     {
-        self.step_internal(false, true);
+        self.step_internal(false, true)
     }
 
     // NOTE:
     // Placement means we retry positioning objects that are colliding 
-    fn step_internal(&mut self, record_events_param: bool, placement: bool)
+    fn step_internal(&mut self, record_events_param: bool, placement: bool) -> bool
     {
-        info!("Physics Step Internal");
+        debug!("Physics Step Internal");
         let mut record_events = record_events_param;
 
         // Idea: We handle collisions, and undo movements and reupdate
         // so things stay in the same place but the collision is recorded
         //
         let mut loops = 0;
-        let max_loops = if placement { 100 } else { 10 };
+        let max_loops = if placement { 500 } else { 200 };
+
+        let mut phys_capture: Vec<Json>;
+        #[cfg(physics_capture)]
+        {
+            phys_capture = vec![];
+        }
+
         loop
         {
             self.world.update();
             let mut collisions = false;
             let mut corrections = vec![];
-            for (pair_inx, coll_data) in self.world.proximity_pairs().enumerate()
+            for (pair_inx, coll_data) in self.world.contacts().enumerate()
             {
-                let (object_1, object_2, bx_prox_detect) = coll_data;
+                let (object_1, object_2, contact_data) = coll_data;
 
-
-                match bx_prox_detect.proximity()
+                let mut can_skip = true;
+                if contact_data.depth > 0.005 
                 {
-                    Proximity::Intersecting =>
-                    {
-                        debug!("Intersecting");
-                    },
-                    Proximity::WithinMargin =>
-                    {
-                        debug!("Collision: WithinMargin");
-                        continue
-                    },
-                    Proximity::Disjoint =>
-                    {
-                        debug!("Collision: Disjoint");
-                        continue
-                    },
+                    can_skip = false;
                 }
 
-                let mut n_pos = object_1.position;
-                n_pos = object_1.data.initial_pos.get();
+                if loops >= (max_loops - 5)
+                {
+                    error!("Dumping collisions Loop({}) {} {} {}", loops, object_1.uid, object_2.uid, contact_data.depth);
+                    error!("Dumping collisions Loop {} {}", contact_data.world1, contact_data.world2);
+                }
+                if can_skip
+                {
+                    continue;
+                }
 
-                let mut n_pos_2 = object_2.position;
-                n_pos_2 = object_2.data.initial_pos.get();
+                let mut n_pos = object_1.data.initial_pos.get();
+                let mut n_pos_2 = object_2.data.initial_pos.get();
+
+                if max_loops - loops < 3
+                {
+                    error!("Start dumping: {} {}", object_1.position, object_2.position);
+                }
 
 
                 if (placement)
                 {
-                    let m = ( loops as f32 / 4.0 ).floor();
+                    let mut m = ( loops as f32 / 4.0 ).ceil();
+                    if m > 10.0
+                    {
+                        m = 10.0;
+                    }
                     let displacements = vec![Vector2::new( m,     0.0),
                                              Vector2::new( 0.0,  -1.0*m),
                                              Vector2::new(-1.0*m, 0.0),
                                              Vector2::new( 0.0,   m)];
-                    n_pos.translation +=  displacements[ loops % displacements.len() ];
-                    debug!("New Position: {}",
-                           n_pos.translation.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
 
-                    let left   = n_pos.translation.x;
-                    let right  = n_pos.translation.x;
-                    let bottom = n_pos.translation.y;
-                    let top    = n_pos.translation.y;
-
-                    if left < 0.0 || right > 100.0 
-                    {
-                        n_pos.translation.x = object_1.data.dimensions.get().x; 
-                    }
-
-                    if bottom < 0.0 || top > 100.0 
-                    {
-                        n_pos.translation.y = object_1.data.dimensions.get().y; 
-                    }
+                    let mut target_obj;
+                    let mut other_obj;
+                    let mut target_obj_new_pos;
 
                     match object_1.data.ppo_type
                     {
                         PPOType::Polymini =>
                         {
-                            object_1.data.initial_pos.set(n_pos);
-                            corrections.push((object_1.uid, n_pos));
+                            match object_2.data.ppo_type
+                            {
+                                PPOType::Polymini =>
+                                {
+                                    // If both objects are Polyminis, and we're placing,
+                                    // we move the one with the highest ID, to keep it as
+                                    // deterministic as possible
+                                    if (object_1.uid > object_2.uid)
+                                    {
+                                        target_obj = object_1;
+                                        other_obj = object_2;
+                                    }
+                                    else
+                                    {
+                                        target_obj = object_2;
+                                        other_obj = object_1;
+                                    }
+                                }
+                                PPOType::StaticObject =>
+                                {
+                                    target_obj = object_1;
+                                    other_obj = object_2;
+                                }
+                            }
                         }
                         PPOType::StaticObject =>
                         {
-                            object_2.data.initial_pos.set(n_pos);
-                            corrections.push((object_2.uid, n_pos));
+                            target_obj = object_2;
+                            other_obj = object_1;
                         }
                     }
+                    target_obj_new_pos = target_obj.data.initial_pos.get();
+                    target_obj_new_pos.translation +=  displacements[ (loops + pair_inx) % displacements.len() ];
+                    debug!("New Position: {}",
+                           target_obj_new_pos.translation.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
+
+                    let left   = target_obj_new_pos.translation.x - target_obj.data.dimensions.get().x / 2.0;
+                    let right  = target_obj_new_pos.translation.x + target_obj.data.dimensions.get().x / 2.0;
+                    let bottom = target_obj_new_pos.translation.y - target_obj.data.dimensions.get().y / 2.0;
+                    let top    = target_obj_new_pos.translation.y + target_obj.data.dimensions.get().y / 2.0;
+
+                    if left < 0.0
+                    {
+                        target_obj_new_pos.translation.x = target_obj.data.dimensions.get().x / 2.0; 
+                    }
+
+                    if right > self.dimensions.0 
+                    {
+                        target_obj_new_pos.translation.x = self.dimensions.0 - target_obj.data.dimensions.get().x / 2.0; 
+                    }
+
+                    if bottom < 0.0
+                    {
+                        target_obj_new_pos.translation.y = target_obj.data.dimensions.get().y / 2.0; 
+                    }
+
+                    if  top > 100.0 
+                    {
+                        target_obj_new_pos.translation.y = self.dimensions.1 - target_obj.data.dimensions.get().y / 2.0; 
+                    }
+
+                    target_obj.data.initial_pos.set(target_obj_new_pos);
+                    corrections.push((target_obj.uid, target_obj_new_pos, target_obj.data.dimensions.get(), other_obj.uid));
                 }
                 else
                 {
-                    corrections.push((object_1.uid, n_pos));
-                    corrections.push((object_2.uid, n_pos_2));
+                    corrections.push((object_1.uid, n_pos, object_1.data.dimensions.get(), object_2.uid));
+                    corrections.push((object_2.uid, n_pos_2, object_2.data.dimensions.get(), object_1.uid));
                 }
 
                 let ev = CollisionEvent
@@ -656,11 +709,6 @@ impl PhysicsWorld
                 collisions = true;
             }
 
-            for c in corrections
-            {
-                self.world.deferred_set_position(c.0, c.1);
-            }
-
             // Only record collision events on the first pass, not on the rewind passes
             record_events = false;
             if !collisions
@@ -669,12 +717,35 @@ impl PhysicsWorld
             }
 
             loops += 1;
-            if loops == max_loops 
+            if loops >= (max_loops - 5)
             {
-                panic!("Probably caught in endless loop");
+
+                error!("Last set of Corrections: ");
+                for c in &corrections
+                {
+                    error!("{} {:?} {} {}", c.0, c.1, c.2, c.3);
+                }
+
+                if loops == max_loops
+                {
+                    if placement
+                    {
+                        // This object can't be placed correctly
+                        return false;
+                    }
+
+                    panic!("Probably caught in endless loop");
+                }
             }
+
+            for c in &corrections
+            {
+                self.world.deferred_set_position(c.0, c.1);
+            }
+
             debug!("Looping");
         }
+        return true;
     }
 
     fn get(&self, id: usize) -> Option<&CollisionObject2<f32, PolyminiPhysicsData>>
@@ -723,7 +794,7 @@ mod test
         physical_world.add(&physics);
         physics.update_state(&physical_world);
 
-        assert_eq!(physics.get_pos(), (3.0, -1.0));
+        assert_eq!(physics.get_pos(), (0.0, 2.0));
     }
 
     #[test]

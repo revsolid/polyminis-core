@@ -147,14 +147,14 @@ impl Deserializable for Trait
 }
 
 //
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PolyminiSimpleTrait
 {
     Empty,
     SpeedTrait,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PolyminiTrait
 {
     PolyminiActuator(ActuatorTag),
