@@ -206,7 +206,7 @@ impl SimulationEpoch
 
     pub fn done(&self) -> bool
     {
-        self.steps == self.max_steps
+        self.steps == self.max_steps * self.substeps
     }
 
     fn init_phase(&mut self)

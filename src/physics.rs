@@ -369,9 +369,21 @@ impl Physics
         // Nuke'm
         o.data.collision_events.borrow_mut().clear();
 
-        //TODO: Calculate orientation,
-        self.orientation = (4.0 * ( o.position.rotation.angle_to(&Rotation2::new(Vector1::new(0.0))) / (consts::FRAC_PI_2 * 4.0))).floor() as u8;
+        
+        // Calculate orientation,
+        //
+        let pi = consts::FRAC_PI_2 * 2.0;
+        let v = if o.position.rotation.rotation().x < 0.0
+        {
+            o.position.rotation.rotation().x +  pi
+        }
+        else
+        {
+            o.position.rotation.rotation().x
+        };
+        self.orientation = ( 4.0 * ( v / pi ) ).floor() as u8;
 
+        debug!("Orientation ncoll {}", o.position.rotation.rotation());
         debug!("Orientation {}", self.get_orientation()); 
         let v = 0.1;
         match v 
@@ -850,6 +862,22 @@ mod test
         physical_world.step();
         physics.update_state(&physical_world);
         assert_eq!(physics.get_pos(), (0.0, 0.0));
+
+
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
+
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
+
     }
 
     fn test_physics_undoing()
