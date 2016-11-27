@@ -448,7 +448,7 @@ impl PhysicsWorld
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()),
                             ShapeHandle2::new(rect),
-                            self.objects_cgroup, GeometricQueryType::Contacts(0.0),
+                            self.objects_cgroup, GeometricQueryType::Proximity(0.0),
                             PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
         self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
@@ -461,7 +461,7 @@ impl PhysicsWorld
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
-                            self.polyminis_cgroup, GeometricQueryType::Contacts(0.0),
+                            self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
                             PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions));
         let v = !self.finish_adding();
         if v 
@@ -568,24 +568,32 @@ impl PhysicsWorld
             self.world.update();
             let mut collisions = false;
             let mut corrections = vec![];
-            for (pair_inx, coll_data) in self.world.contacts().enumerate()
+            for (pair_inx, coll_data) in self.world.proximity_pairs().enumerate()
             {
-                let (object_1, object_2, contact_data) = coll_data;
+                let (object_1, object_2, bx_prox_detect) = coll_data;
 
-                let mut can_skip = true;
-                if contact_data.depth > 0.005 
+
+                match bx_prox_detect.proximity()
                 {
-                    can_skip = false;
+                    Proximity::Intersecting =>
+                    {
+                        debug!("Intersecting");
+                    },
+                    Proximity::WithinMargin =>
+                    {
+                        debug!("Collision: WithinMargin");
+                        continue
+                    },
+                    Proximity::Disjoint =>
+                    {
+                        debug!("Collision: Disjoint");
+                        continue
+                    },
                 }
 
                 if loops >= (max_loops - 5)
                 {
-                    error!("Dumping collisions Loop({}) {} {} {}", loops, object_1.uid, object_2.uid, contact_data.depth);
-                    error!("Dumping collisions Loop {} {}", contact_data.world1, contact_data.world2);
-                }
-                if can_skip
-                {
-                    continue;
+                    error!("Dumping collisions Loop({}) {} {}", loops, object_1.uid, object_2.uid);
                 }
 
                 let mut n_pos = object_1.data.initial_pos.get();
@@ -794,7 +802,7 @@ mod test
         physical_world.add(&physics);
         physics.update_state(&physical_world);
 
-        assert_eq!(physics.get_pos(), (0.0, 2.0));
+        assert_eq!(physics.get_pos(), (0.0, 3.0));
     }
 
     #[test]

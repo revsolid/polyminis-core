@@ -309,7 +309,7 @@ impl Serializable for SimulationEpoch
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
-            json_obj.insert("step".to_owned(), self.steps.to_json());
+            json_obj.insert("Step".to_owned(), self.steps.to_json());
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
@@ -317,7 +317,7 @@ impl Serializable for SimulationEpoch
             //
         }
 
-        json_obj.insert("environment".to_owned(), self.environment.serialize(ctx));
+        json_obj.insert("Environment".to_owned(), self.environment.serialize(ctx));
 
 
         let mut json_arr = pmJsonArray::new();
@@ -325,7 +325,7 @@ impl Serializable for SimulationEpoch
         {
             json_arr.push(s.serialize(ctx));
         }
-        json_obj.insert("species".to_owned(), Json::Array(json_arr));
+        json_obj.insert("Species".to_owned(), Json::Array(json_arr));
 
         Json::Object(json_obj)
     }
