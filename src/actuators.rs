@@ -47,8 +47,17 @@ pub enum ActuatorTag
 }
 impl ActuatorTag
 {
-    pub fn to_action(&self, stimulus: f32, coord: Coord) -> Action
+    pub fn to_action(&self, stimulus_p: f32, coord: Coord) -> Action
     {
+        let mut stimulus = stimulus_p;
+        if stimulus > 1.0
+        {
+            stimulus = 1.0;
+        }
+        if stimulus < -1.0
+        {
+            stimulus = -1.0;
+        }
         match *self
         {
             ActuatorTag::MoveHorizontal =>

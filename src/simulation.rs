@@ -406,6 +406,7 @@ mod test
             println!("{}", s.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_STATIC |
                                                                              PolyminiSerializationFlags::PM_SF_DYNAMIC)));
         }
+        assert_eq!(0, 1);
     }
 
     #[test]

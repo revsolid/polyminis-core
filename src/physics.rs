@@ -349,11 +349,6 @@ impl Physics
         // Update position
         self.ncoll_pos = o.position.translation;
 
-        // If an attempt to move was made, but we didn't move, update
-        // last move succeded
-        //
-        self.move_succeded =  (self.collisions.len() == 0);
-        
 
         // Copy collision events over and nuke the list
         self.collisions.clear();
@@ -362,6 +357,11 @@ impl Physics
         {
             self.collisions.push(*ev);
         }
+
+        // If an attempt to move was made, but we didn't move, update
+        // last move succeded
+        //
+        self.move_succeded =  (self.collisions.len() == 0);
 
         // Set our new initial position
         o.data.initial_pos.set(o.position);
@@ -709,7 +709,7 @@ impl PhysicsWorld
 
                 if record_events
                 {
-
+                    error!("ASDF;KLJASDF;LKJASD;FKLJASD;FKLJASD/LFKJ");
                     object_1.data.collision_events.borrow_mut().push(ev);
                     object_2.data.collision_events.borrow_mut().push(ev);
                 }
