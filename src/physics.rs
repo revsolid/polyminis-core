@@ -4,7 +4,7 @@ extern crate nalgebra;
 extern crate ncollide;
 
 use self::nalgebra::{Isometry2,  Point2, Vector1, Vector2, zero};
-use self::nalgebra::{Translation, Rotation};
+use self::nalgebra::{Translation, Rotation, Rotation2, RotationTo};
 use self::nalgebra::{distance};
 
 use self::ncollide::query::{Proximity, Contact};
@@ -307,7 +307,7 @@ impl Physics
 
     pub fn get_orientation(&self) -> Direction 
     {
-        let directions = [Direction::UP, Direction::RIGHT, Direction::DOWN, Direction::LEFT];
+        let directions = [Direction::UP, Direction::LEFT, Direction::DOWN, Direction::RIGHT];
         directions[self.orientation as usize]
     }
 
@@ -370,6 +370,15 @@ impl Physics
         o.data.collision_events.borrow_mut().clear();
 
         //TODO: Calculate orientation,
+        self.orientation = (4.0 * ( o.position.rotation.angle_to(&Rotation2::new(Vector1::new(0.0))) / (consts::FRAC_PI_2 * 4.0))).floor() as u8;
+
+        debug!("Orientation {}", self.get_orientation()); 
+        let v = 0.1;
+        match v 
+        {
+            0.0...1.0 => {},
+            _ => {}
+        }
     }
 }
 impl Serializable for Physics
@@ -388,6 +397,7 @@ impl Serializable for Physics
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
             json_obj.insert("Position".to_owned(), self.get_pos().to_json());
+            json_obj.insert("Orientation".to_owned(), self.get_orientation().to_json());
             let mut ev_arr = pmJsonArray::new();
             for ev in &self.collisions
             {
@@ -499,9 +509,8 @@ impl PhysicsWorld
                         m = -1.0;
                     }
                     debug!("Before rotation {}", p_obj.position.translation);
-                    new_pos = p_obj.position;
-                    new_pos.set_rotation((Vector1::new(consts::FRAC_PI_2) * m));
-                    debug!("Before rotation {}", new_pos.translation);
+                    new_pos = p_obj.position.prepend_rotation(&(Vector1::new(consts::FRAC_PI_2) * m));
+                    debug!("After rotation {}", new_pos.translation);
                 },
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse, _)) =>
                 {
@@ -510,7 +519,7 @@ impl PhysicsWorld
                     {
                         m = -1.0;
                     }
-                    new_pos = p_obj.position.append_translation(&Vector2::new(0.0, m*1.0));
+                    new_pos = p_obj.position.prepend_translation(&Vector2::new(0.0, m*1.0));
                 },
                 Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, impulse, _)) =>
                 {
@@ -519,7 +528,7 @@ impl PhysicsWorld
                     {
                         m = -1.0;
                     }
-                    new_pos = p_obj.position.append_translation(&Vector2::new(m*1.0, 0.0));
+                    new_pos = p_obj.position.prepend_translation(&Vector2::new(m*1.0, 0.0));
                 },
                 Action::NoAction =>
                 {
@@ -819,17 +828,28 @@ mod test
         physical_world.step();
         physics.update_state(&physical_world);
         assert_eq!(physics.get_pos(), (0.0, 0.0));
+
         physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
                              Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
                        &mut physical_world);
 
         physical_world.step();
         physics.update_state(&physical_world);
-        assert_eq!(physics.get_pos(), (1.0, 0.0));
+        assert_eq!(physics.get_pos(), (0.0, 1.0));
+
         physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 2.0))],
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
-        assert_eq!(physics.get_pos(), (1.0, 0.0));
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (0.0, 1.0));
+
+        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.3, 0.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
     }
 
     fn test_physics_undoing()
