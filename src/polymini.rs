@@ -211,13 +211,17 @@ impl Polymini
         self.uuid
     }
 
-    pub fn consequence_physical(&mut self, world: &PhysicsWorld)
+    pub fn consequence_physical(&mut self, world: &PhysicsWorld, substep: usize)
     {
         if self.dead
         {
             return
         }
-        self.physics.update_state(world);
+
+        if self.get_speed() >= substep
+        {
+            self.physics.update_state(world);
+        }
     }
 
     pub fn get_morphology(&self) -> &Morphology

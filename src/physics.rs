@@ -709,7 +709,6 @@ impl PhysicsWorld
 
                 if record_events
                 {
-                    error!("ASDF;KLJASDF;LKJASD;FKLJASD;FKLJASD/LFKJ");
                     object_1.data.collision_events.borrow_mut().push(ev);
                     object_2.data.collision_events.borrow_mut().push(ev);
                 }

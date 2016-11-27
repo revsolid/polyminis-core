@@ -63,19 +63,21 @@ pub struct SimulationEpoch
     species: Vec<Species>,
     proportions: Vec<f32>,
     steps: usize,
+    substeps: usize,
     max_steps: usize,
 }
 impl SimulationEpoch
 {
     pub fn new() -> SimulationEpoch
     {
-        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100 } 
+        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4 }
     }
 
     pub fn new_with(environment: Environment, max_steps: usize) -> SimulationEpoch
     {
         SimulationEpoch { environment: environment, species: vec![], proportions: vec![], steps: 0,
-                          max_steps: max_steps } 
+                          max_steps: max_steps, substeps:4 } 
+                                                // TODO: Parameterizable
     }
 
     pub fn is_full(&self) -> bool
@@ -193,15 +195,12 @@ impl SimulationEpoch
 
     pub fn step(&mut self)
     {
-        //TODO: Configurable
-        for i in 0..4
-        {
-            self.init_phase();
-            self.sense_phase();
-            self.think_phase();
-            self.act_phase(i);
-            self.consequence_phase();
-        }
+        let substep = self.steps % self.substeps;
+        self.init_phase();
+        self.sense_phase();
+        self.think_phase();
+        self.act_phase(substep);
+        self.consequence_phase(substep);
         self.steps += 1;
     }
 
@@ -256,7 +255,7 @@ impl SimulationEpoch
             }
         }
     }
-    fn consequence_phase(&mut self)
+    fn consequence_phase(&mut self, substep: usize)
     {
         // Update environment based on the aftermath of the simulation
 
@@ -269,7 +268,7 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.consequence_physical(&self.environment.physical_world);
+                polymini.consequence_physical(&self.environment.physical_world, substep);
             }
         }
         // After Physics is updated, each Polymini has data like
@@ -406,7 +405,6 @@ mod test
             println!("{}", s.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_STATIC |
                                                                              PolyminiSerializationFlags::PM_SF_DYNAMIC)));
         }
-        assert_eq!(0, 1);
     }
 
     #[test]
