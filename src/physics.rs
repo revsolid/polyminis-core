@@ -415,9 +415,9 @@ impl Serializable for Physics
             {
                 ev_arr.push(ev.serialize(ctx));
             }
-            json_obj.insert("collisions".to_owned(), Json::Array(ev_arr));
+            json_obj.insert("Collisions".to_owned(), Json::Array(ev_arr));
 
-            json_obj.insert("last_action".to_owned(), self.last_action.to_json());
+            json_obj.insert("LastAction".to_owned(), self.last_action.to_json());
         }
         Json::Object(json_obj)
     }
@@ -522,6 +522,7 @@ impl PhysicsWorld
                     }
                     debug!("Before rotation {}", p_obj.position.translation);
                     new_pos = p_obj.position.prepend_rotation(&(Vector1::new(consts::FRAC_PI_2) * m));
+
                     debug!("After rotation {}", new_pos.translation);
                 },
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse, _)) =>
