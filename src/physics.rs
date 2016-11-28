@@ -385,12 +385,6 @@ impl Physics
 
         debug!("Orientation ncoll {}", o.position.rotation.rotation());
         debug!("Orientation {}", self.get_orientation()); 
-        let v = 0.1;
-        match v 
-        {
-            0.0...1.0 => {},
-            _ => {}
-        }
     }
 }
 impl Serializable for Physics
@@ -402,8 +396,9 @@ impl Serializable for Physics
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            json_obj.insert("Dimensions".to_owned(), serialize_vector(self.ncoll_dimensions));
-            json_obj.insert("StartingPos".to_owned(), self.get_starting_pos().to_json());
+            json_obj.insert("Dimensions".to_owned(), self.ncoll_dimensions.to_json());
+            let s_pos = self.get_starting_pos();
+            json_obj.insert("StartingPos".to_owned(), Vector2::new(s_pos.x, s_pos.y));
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
