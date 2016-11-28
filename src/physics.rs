@@ -396,9 +396,9 @@ impl Serializable for Physics
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            json_obj.insert("Dimensions".to_owned(), self.ncoll_dimensions.to_json());
+            json_obj.insert("Dimensions".to_owned(), self.ncoll_dimensions.serialize(ctx));
             let s_pos = self.get_starting_pos();
-            json_obj.insert("StartingPos".to_owned(), Vector2::new(s_pos.x, s_pos.y));
+            json_obj.insert("StartingPos".to_owned(), Vector2::new(s_pos.0, s_pos.1).serialize(ctx));
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
