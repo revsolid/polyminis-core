@@ -234,6 +234,11 @@ impl Polymini
         &self.physics
     }
 
+    pub fn get_physics_mut(&mut self) -> &mut Physics
+    {
+        &mut self.physics
+    }
+
     pub fn get_control(&self) -> &Control
     {
         &self.control

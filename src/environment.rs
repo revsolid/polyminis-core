@@ -34,9 +34,9 @@ impl Environment
         env
     }
 
-    pub fn add_individual(&mut self, polymini: &Polymini) -> bool 
+    pub fn add_individual(&mut self, polymini: &mut Polymini) -> bool 
     {
-        let res = if !self.physical_world.add(polymini.get_physics())
+        let res = if !self.physical_world.add(polymini.get_physics_mut())
         {
             false
         }
