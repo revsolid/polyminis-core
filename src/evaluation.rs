@@ -21,6 +21,10 @@ pub enum FitnessStatistic
     // Body
     TotalCells(usize),
 
+
+    // Position
+    FinalPosition(u8, u8),
+
     Died,
 }
 impl FitnessStatistic
@@ -61,6 +65,7 @@ pub enum FitnessEvaluator
     // Movement
     OverallMovement,
     DistanceTravelled,
+    TargetPosition((f32, f32)),
 
     // Shape
     Shape,
@@ -153,7 +158,31 @@ impl FitnessEvaluator
                                                });
                 debug!("Evaluated {} for {} due to Staying Alive", v, i);
                 (i,v)
-            }
+            },
+            FitnessEvaluator::TargetPosition(target) =>
+            {
+                let i = Instinct::Basic;
+                let v = statistics.iter().fold(0.0,
+
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::FinalPosition(actual_x, actual_y) =>
+                                                      {
+                                                          let actual = ( (actual_x as f32) / 255.0,
+                                                                         (actual_y as f32) / 255.0);
+                                                          accum = 10.0 * (target.0 - actual.0).abs() +
+                                                                  10.0 * (target.1 - actual.1).abs();
+                                                      },
+                                                      _ => {}
+                                                  }
+                                                  accum
+                                               });
+
+                debug!("Evaluated {} for {} due to Target Position {:?}", v, i, target);
+                (i,v)
+            },
         }
     }
 }

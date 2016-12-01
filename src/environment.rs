@@ -36,14 +36,8 @@ impl Environment
 
     pub fn add_individual(&mut self, polymini: &mut Polymini) -> bool 
     {
-        let res = if !self.physical_world.add(polymini.get_physics_mut())
-        {
-            false
-        }
-        else
-        {
-            true
-        };
+        let mut res = false;
+        res = self.physical_world.add(polymini.get_physics_mut());
 
         res
         //TODO: Add to other worlds

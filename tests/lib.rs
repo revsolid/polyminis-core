@@ -53,7 +53,8 @@ mod test
         let evaluators = vec![ FitnessEvaluator::OverallMovement,
                                FitnessEvaluator::DistanceTravelled,
                                FitnessEvaluator::Shape,
-                               FitnessEvaluator::Alive, ];
+                               FitnessEvaluator::Alive,
+                               FitnessEvaluator::TargetPosition((1.0, 1.0))];
 
         let translation_table_species_1 = TranslationTable::new_from(&master_translation_table, &active_table_1);
         let translation_table_species_2 = TranslationTable::new_from(&master_translation_table, &active_table_2);

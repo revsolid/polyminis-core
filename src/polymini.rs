@@ -272,6 +272,12 @@ impl Serializable for Polymini
             json_obj.insert("Morphology".to_owned(), self.get_morphology().serialize(ctx));
         }
 
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+        {
+            json_obj.insert("Alive".to_owned(), Json::Boolean(!self.dead));
+        }
+
         json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
 
         json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
@@ -377,6 +383,10 @@ impl PolyminiGAIndividual for Polymini
                 self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved() as u32));
 
                 self.fitness_statistics.push(FitnessStatistic::TotalCells(self.stats.total_cells));
+
+                let norm_pos = self.physics.get_normalized_pos();
+                self.fitness_statistics.push(FitnessStatistic::FinalPosition((255.0*norm_pos.0) as u8,
+                                                                             (255.0*norm_pos.1) as u8));
 
                 if (self.dead)
                 {

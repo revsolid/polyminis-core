@@ -41,8 +41,8 @@ impl Species
     {
 
         let mut inds = vec![];
-        let mut ctx = PolyminiRandomCtx::new_unseeded(name.clone());
-        //rng_ctx: PolyminiRandomCtx::from_seed([0, 1, 2, uuid as u32], format!("Species {}", uuid)),
+        let uuid = PolyminiUUIDCtx::next(); 
+        let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, uuid as u32], format!("Species {}", uuid));
 
         for i in 0..pgaconfig.population_size
         {

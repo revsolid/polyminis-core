@@ -232,6 +232,8 @@ pub struct Physics
     ncoll_pos: Vector2<f32>,
     ncoll_starting_pos: Vector2<f32>,
 
+    world_dimensions: (f32, f32),
+
     orientation: u8,
     collisions: Vec<CollisionEvent>,
 
@@ -275,6 +277,8 @@ impl Physics
             orientation: orientation,
             collisions: vec![],
 
+            world_dimensions: (1.0, 1.0),
+
 
             move_succeded: true,
             last_action: Action::NoAction,
@@ -300,6 +304,12 @@ impl Physics
     {
         (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0,
          self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
+    }
+
+    pub fn get_normalized_pos(&self) -> (f32, f32)
+    {
+        ( (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0)  / self.world_dimensions.0,
+          (self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)  / self.world_dimensions.1 )
     }
 
     pub fn get_distance_moved(&self) -> f32
@@ -387,6 +397,13 @@ impl Physics
 
         debug!("Orientation ncoll {}", o.position.rotation.rotation());
         debug!("Orientation {}", self.get_orientation()); 
+    }
+
+    pub fn update_starting_position(&mut self, physics_world: &PhysicsWorld)
+    {
+        let o = physics_world.get(self.uuid).unwrap();
+        self.ncoll_starting_pos = o.position.translation;
+        self.world_dimensions = physics_world.dimensions;
     }
 }
 impl Serializable for Physics
@@ -495,7 +512,7 @@ impl PhysicsWorld
         }
         else
         {
-            physics.update_state(self);
+            physics.update_starting_position(self);
             true
         }
     }
