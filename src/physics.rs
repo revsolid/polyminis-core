@@ -403,9 +403,11 @@ impl Serializable for Physics
             json_obj.insert("StartingPos".to_owned(), Vector2::new(s_pos.0, s_pos.1).serialize(ctx));
         }
 
+        let pos = self.get_position();
+        json_obj.insert("Position".to_owned(), Vector2::new(pos.0, pos.1).serialize(ctx));
+
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
-            json_obj.insert("Position".to_owned(), self.get_pos().to_json());
             json_obj.insert("Orientation".to_owned(), self.get_orientation().to_json());
             let mut ev_arr = pmJsonArray::new();
             for ev in &self.collisions
