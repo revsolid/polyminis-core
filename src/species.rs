@@ -128,7 +128,7 @@ impl Serializable for Species
     fn serialize(&self,  ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("name".to_string(), self.name.to_json());
+        json_obj.insert("Name".to_string(), self.name.to_json());
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
@@ -142,7 +142,7 @@ impl Serializable for Species
             {
                 pop_arr.push(ind.serialize(ctx));
             }
-            json_obj.insert("population".to_string(), Json::Array(pop_arr));
+            json_obj.insert("Individuals".to_string(), Json::Array(pop_arr));
         }
         Json::Object(json_obj)
     }

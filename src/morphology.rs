@@ -285,12 +285,21 @@ impl Serializable for Representation
 {
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
-        let mut json_obj = pmJsonObject::new();
+        let mut json_arr = pmJsonArray::new();
         for (coord, inx) in &self.positions[0]
         {
-            json_obj.insert(format!("{:?}", coord), self.cells[*inx].serialize(ctx));
+            //json_obj.insert(format!("{:?}", coord), self.cells[*inx].serialize(ctx));
+            let mut json_obj = pmJsonObject::new();
+            {
+                let mut coord_json = pmJsonObject::new();
+                coord_json.insert("x".to_owned(), coord.0.to_json());
+                coord_json.insert("y".to_owned(), coord.1.to_json());
+                json_obj.insert("Coord".to_owned(), Json::Object(coord_json));
+            }
+            json_obj.insert("Trait".to_owned(), self.cells[*inx].serialize(ctx));
+            json_arr.push(Json::Object(json_obj));
         }
-        Json::Object(json_obj)
+        Json::Array(json_arr)
     }
 }
 impl fmt::Debug for Representation 
