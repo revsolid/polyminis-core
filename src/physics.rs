@@ -403,7 +403,7 @@ impl Serializable for Physics
             json_obj.insert("StartingPos".to_owned(), Vector2::new(s_pos.0, s_pos.1).serialize(ctx));
         }
 
-        let pos = self.get_position();
+        let pos = self.get_pos();
         json_obj.insert("Position".to_owned(), Vector2::new(pos.0, pos.1).serialize(ctx));
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
