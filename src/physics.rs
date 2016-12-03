@@ -232,6 +232,8 @@ pub struct Physics
     ncoll_pos: Vector2<f32>,
     ncoll_starting_pos: Vector2<f32>,
 
+    corner: (i8, i8),
+
     world_dimensions: (f32, f32),
 
     orientation: u8,
@@ -263,8 +265,12 @@ impl Physics
     // Public
     pub fn new(uuid: PUUID, dimensions: (u8, u8), x: f32, y: f32, orientation: u8) -> Physics
     {
+        Physics::new_with_corner(uuid, dimensions, x, y, orientation, (0, 0))
+    }
+    pub fn new_with_corner(uuid: PUUID, dimensions: (u8, u8), x: f32, y: f32, orientation: u8, corner: (i8, i8)) -> Physics
+    {
         let nc_dims = dimensions_sim_to_ncoll(dimensions);
-        let nc_pos = Vector2::new(x + nc_dims.x / 2.0, y + nc_dims.y / 2.0);
+        let nc_pos = Vector2::new( (x + corner.0 as f32) + nc_dims.x / 2.0, y + (nc_dims.y + corner.1 as f32)/ 2.0);
 
         Physics
         {
@@ -278,6 +284,7 @@ impl Physics
             collisions: vec![],
 
             world_dimensions: (1.0, 1.0),
+            corner: corner,
 
 
             move_succeded: true,
@@ -287,8 +294,8 @@ impl Physics
 
     pub fn reset(&mut self, pos: (f32, f32))
     {
-        let n_pos = Vector2::new( pos.0 + self.ncoll_dimensions.x / 2.0,
-                                  pos.1 + self.ncoll_dimensions.y / 2.0 );
+        let n_pos = Vector2::new( (pos.0 + self.corner.0 as f32) + self.ncoll_dimensions.x / 2.0,
+                                  (pos.1 + self.corner.1 as f32) + self.ncoll_dimensions.y / 2.0 );
         info!("Reseting Physics - New Pos: {} (Old Pos: {}", n_pos, self.ncoll_pos);
 
         self.ncoll_pos = n_pos;
@@ -623,7 +630,7 @@ impl PhysicsWorld
                         if ((object_1.position.translation.x - object_2.position.translation.x).abs() == range_x ||
                             (object_1.position.translation.y - object_2.position.translation.y).abs() == range_y )
                         {
-                            continue 
+                            continue
                         }
                     },
                     Proximity::WithinMargin =>
@@ -848,7 +855,7 @@ mod test
         physical_world.add(&mut physics);
         physics.update_state(&physical_world);
 
-        assert_eq!(physics.get_pos(), (0.0, 3.0));
+        assert_eq!(physics.get_pos(), (0.0, 2.0));
     }
 
     #[test]
