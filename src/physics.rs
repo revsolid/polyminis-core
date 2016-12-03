@@ -617,6 +617,14 @@ impl PhysicsWorld
                     Proximity::Intersecting =>
                     {
                         debug!("Intersecting");
+
+                        let range_x = (object_1.data.dimensions.get().x + object_2.data.dimensions.get().x) / 2.0;
+                        let range_y = (object_1.data.dimensions.get().y + object_2.data.dimensions.get().y) / 2.0;
+                        if ((object_1.position.translation.x - object_2.position.translation.x).abs() == range_x ||
+                            (object_1.position.translation.y - object_2.position.translation.y).abs() == range_y )
+                        {
+                            continue 
+                        }
                     },
                     Proximity::WithinMargin =>
                     {

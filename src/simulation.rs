@@ -410,6 +410,7 @@ mod test
     #[test]
     fn test_step_double_coll()
     {
+        let _ = env_logger::init();
         let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
                                [0, 0x0B, 0xBE, 0xDA],
                                [0,    0, 0xBE, 0xEF],
@@ -420,8 +421,8 @@ mod test
                                 [0,    0, 0xBE, 0xEF],
                                 [0,    0, 0xDB, 0xAD]];
 
-        let p1 = Polymini::new_at((1.0, 0.0), Morphology::new(&chromosomes, &TranslationTable::new()));
-        let p2 = Polymini::new_at((-3.0, 0.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
+        let p1 = Polymini::new_at((21.0, 20.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((17.0, 20.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
 
         println!("{:?}", p1.get_morphology());
         println!(">> {:?}", p1.get_physics().get_pos());
@@ -429,7 +430,7 @@ mod test
         println!(">> {:?}", p2.get_physics().get_pos());
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object((10.0, 2.0), (1, 1));
+        s.add_object((20.0, 22.0), (1, 1));
         for _ in 0..10 
         {
             s.step();
