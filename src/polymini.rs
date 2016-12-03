@@ -95,6 +95,7 @@ impl Polymini
     {
         let uuid = PolyminiUUIDCtx::next();
         let dim = morphology.get_dimensions();
+        let corner = morphology.get_corner();
 
         let stats = Stats::new(&morphology);
 
@@ -102,7 +103,7 @@ impl Polymini
                    dead: false,
                    morph: morphology,
                    control: control,
-                   physics: Physics::new(uuid, dim, pos.0, pos.1, 0),
+                   physics: Physics::new_with_corner(uuid, dim, pos.0, pos.1, 0, corner),
                    stats: stats,
                    fitness_statistics: vec![],
                    raw_score: 0.0,

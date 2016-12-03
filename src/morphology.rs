@@ -229,12 +229,12 @@ struct Representation
     cells: Vec<Cell>,
     positions: [HashMap<Coord, usize>; TOTAL_ORIENTATIONS],
     dimensions: (u8, u8),
-    corners: [(i32, i32); TOTAL_ORIENTATIONS],
+    corners: [(i8, i8); TOTAL_ORIENTATIONS],
 }
 impl Representation
 {
     pub fn new(positions: Vec<Coord>, cells: Vec<Cell>,
-               dimensions: (u8, u8), corner: (i32, i32)) -> Representation
+               dimensions: (u8, u8), corner: (i8, i8)) -> Representation
     {
         let mut all_positions : [HashMap<Coord, usize>; TOTAL_ORIENTATIONS] = [HashMap::new(), HashMap::new(),
                                                                                HashMap::new(), HashMap::new()];
@@ -255,8 +255,8 @@ impl Representation
 
         let minx = corner.0;
         let miny = corner.1;
-        let maxx = dimensions.0 as i32 + minx - 1;
-        let maxy = dimensions.1 as i32 + miny - 1;
+        let maxx = dimensions.0 as i8 + minx - 1;
+        let maxy = dimensions.1 as i8 + miny - 1;
 
         corners[0] = (   minx,       miny);
         corners[1] = (   miny,    -1*maxx);
@@ -319,7 +319,7 @@ impl fmt::Debug for Representation
             {
                 for j in 0..w 
                 {
-                    let mut trans_coord = (j as i32, i as i32);
+                    let mut trans_coord = (j as i8, i as i8);
                     trans_coord.0 += self.corners[p].0;
                     trans_coord.1 += self.corners[p].1;
 
@@ -601,6 +601,11 @@ impl Morphology
     pub fn get_total_cells(&self) -> usize
     {
         self.representations.cells.len()
+    }
+
+    pub fn get_corner(&self) -> (i8, i8)
+    {
+        self.representations.corners[0]
     }
 }
 impl Serializable for Morphology

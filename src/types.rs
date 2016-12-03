@@ -45,7 +45,7 @@ impl fmt::Display for Direction
     }
 }
 
-pub type Coord = (i32, i32);
+pub type Coord = (i8, i8);
 
 pub struct DeathContext
 {
