@@ -93,18 +93,20 @@ struct PolyminiPhysicsData
     ppo_type: PPOType,
     initial_pos: std_Cell<Isometry2<f32>>,
     dimensions: std_Cell<Vector2<f32>>,
+    corner: std_Cell<(i8, i8)>,
     collision_events: std_RefCell<Vec<CollisionEvent>>,
     looped: std_Cell<bool>,
 }
 impl PolyminiPhysicsData 
 {
-    fn new_for_polymini(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
+    fn new_for_polymini(pos: Vector2<f32>, dimensions: Vector2<f32>, corner: (i8, i8)) -> PolyminiPhysicsData
     {
         PolyminiPhysicsData
         {
             ppo_type: PPOType::Polymini,
             initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
             dimensions: std_Cell::new(dimensions),
+            corner: std_Cell::new(corner),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
         }
@@ -116,6 +118,7 @@ impl PolyminiPhysicsData
             ppo_type: PPOType::StaticObject,
             initial_pos: std_Cell::new(Isometry2::new(pos, Vector1::new(0.0))),
             dimensions: std_Cell::new(dimensions),
+            corner: std_Cell::new((0,0)),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
         }
@@ -245,6 +248,7 @@ pub struct Physics
 impl Physics
 {
     // Private
+    // TODO:
     fn build_bounding_box(&self) -> Compound2<f32>
     {
         // First pass, shape = box of dimensions = Physics.dimensions
@@ -256,7 +260,11 @@ impl Physics
 
         let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
                                                               c_dimensions.1 as f32)));
-        let iso = Isometry2::new(zero(), zero());
+
+
+        let disp = Vector2::new(c_dimensions.0 + self.corner.0 as f32,
+                                c_dimensions.1 + self.corner.1 as f32);
+        let iso = Isometry2::new(disp, zero());
 
         //TODO: Create several shapes to match the morphology closely
         Compound::new(vec![(iso, rect)])
@@ -270,7 +278,7 @@ impl Physics
     pub fn new_with_corner(uuid: PUUID, dimensions: (u8, u8), x: f32, y: f32, orientation: u8, corner: (i8, i8)) -> Physics
     {
         let nc_dims = dimensions_sim_to_ncoll(dimensions);
-        let nc_pos = Vector2::new( (x + corner.0 as f32) + nc_dims.x / 2.0, y + (nc_dims.y + corner.1 as f32)/ 2.0);
+        let nc_pos = Vector2::new(x, y);//Vector2::new( (x + corner.0 as f32) + nc_dims.x / 2.0, y + (nc_dims.y + corner.1 as f32)/ 2.0);
 
         Physics
         {
@@ -294,8 +302,8 @@ impl Physics
 
     pub fn reset(&mut self, pos: (f32, f32))
     {
-        let n_pos = Vector2::new( (pos.0 + self.corner.0 as f32) + self.ncoll_dimensions.x / 2.0,
-                                  (pos.1 + self.corner.1 as f32) + self.ncoll_dimensions.y / 2.0 );
+        let n_pos = Vector2::new(pos.0, pos.1); // Vector2::new( (pos.0 + self.corner.0 as f32) + self.ncoll_dimensions.x / 2.0,
+                                                //              (pos.1 + self.corner.1 as f32) + self.ncoll_dimensions.y / 2.0 );
         info!("Reseting Physics - New Pos: {} (Old Pos: {}", n_pos, self.ncoll_pos);
 
         self.ncoll_pos = n_pos;
@@ -304,19 +312,25 @@ impl Physics
 
     pub fn get_starting_pos(&self) -> (f32, f32)
     {
-        (self.ncoll_starting_pos.x - self.ncoll_dimensions.x / 2.0,
-         self.ncoll_starting_pos.y - self.ncoll_dimensions.y / 2.0)
+        (self.ncoll_starting_pos.x, self.ncoll_starting_pos.y)
+       /* (self.ncoll_starting_pos.x - self.ncoll_dimensions.x / 2.0,
+         self.ncoll_starting_pos.y - self.ncoll_dimensions.y / 2.0) */
     }
     pub fn get_pos(&self) -> (f32, f32)
     {
-        (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0,
-         self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)
+        (self.ncoll_pos.x, self.ncoll_pos.y)
+        /*
+        ( (self.ncoll_pos.x + self.corner.0) - self.ncoll_dimensions.x / 2.0,
+          (self.ncoll_pos.y + self.corner.1) - self.ncoll_dimensions.y / 2.0) */
     }
 
     pub fn get_normalized_pos(&self) -> (f32, f32)
     {
+
+        (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.0)
+        /*
         ( (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0)  / self.world_dimensions.0,
-          (self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)  / self.world_dimensions.1 )
+          (self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)  / self.world_dimensions.1 )*/
     }
 
     pub fn get_distance_moved(&self) -> f32
@@ -487,12 +501,18 @@ impl PhysicsWorld
     pub fn add_object(&mut self, uuid: PUUID, position: (f32, f32),  dimensions: (u8, u8))
     {
         let nc_dim = dimensions_sim_to_ncoll(dimensions);
-        let rect = Cuboid::new( Vector2::new(nc_dim.x / 2.0, nc_dim.y / 2.0) );
-        let nc_pos = Vector2::new(position.0 + nc_dim.x / 2.0, position.1 + nc_dim.y / 2.0);
+        let nc_pos = Vector2::new(position.0, position.1);
+
+        let c_dimensions = (nc_dim.x as f32 / 2.0, nc_dim.y as f32 / 2.0);
+
+        let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
+                                                              c_dimensions.1 as f32)));
+
+        let iso = Isometry2::new(zero(), zero());
 
         self.world.deferred_add(uuid,
-                            Isometry2::new(nc_pos, zero()),
-                            ShapeHandle2::new(rect),
+                            Isometry2::new(nc_pos, zero()), 
+                            ShapeHandle2::new(Compound::new(vec![(iso, rect)])),
                             self.objects_cgroup, GeometricQueryType::Proximity(0.0),
                             PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
@@ -507,7 +527,7 @@ impl PhysicsWorld
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
                             self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
-                            PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions));
+                            PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions, physics.corner));
         let v = !self.finish_adding();
         if v 
         {
@@ -590,6 +610,43 @@ impl PhysicsWorld
         self.step_internal(false, true)
     }
 
+    fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>) -> bool
+    {
+        //TODO: Rotated cases
+        let range_x = (one.data.dimensions.get().x + other.data.dimensions.get().x) / 2.0;
+        let range_y = (one.data.dimensions.get().y + other.data.dimensions.get().y) / 2.0;
+
+
+        let disp = Vector2::new(one.data.dimensions.get().x / 2.0 + one.data.corner.get().0 as f32,
+                                one.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
+
+
+        let adj_position1 = Vector2::new(one.position.translation.x + disp.x,
+                                         one.position.translation.y + disp.y);
+
+
+        let disp_2 = Vector2::new(other.data.dimensions.get().x / 2.0 + other.data.corner.get().0 as f32,
+                                  other.data.dimensions.get().y / 2.0 + other.data.corner.get().1 as f32);
+
+
+        let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
+                                         other.position.translation.y + disp_2.y);
+
+        let d_x = adj_position1.x - adj_position2.x;
+        let d_y = adj_position1.y - adj_position2.y;
+        if ((d_x).abs() == range_x ||
+            (d_y).abs() == range_y )
+        {
+           return true; 
+        }
+
+
+        debug!("Not only touching {} {} {} {}", d_x, d_y, range_x, range_y);
+
+
+        return false;
+    }
+
     // NOTE:
     // Placement means we retry positioning objects that are colliding 
     fn step_internal(&mut self, record_events_param: bool, placement: bool) -> bool
@@ -624,11 +681,7 @@ impl PhysicsWorld
                     Proximity::Intersecting =>
                     {
                         debug!("Intersecting");
-
-                        let range_x = (object_1.data.dimensions.get().x + object_2.data.dimensions.get().x) / 2.0;
-                        let range_y = (object_1.data.dimensions.get().y + object_2.data.dimensions.get().y) / 2.0;
-                        if ((object_1.position.translation.x - object_2.position.translation.x).abs() == range_x ||
-                            (object_1.position.translation.y - object_2.position.translation.y).abs() == range_y )
+                        if PhysicsWorld::just_touching(&object_1, &object_2)
                         {
                             continue
                         }
@@ -855,7 +908,7 @@ mod test
         physical_world.add(&mut physics);
         physics.update_state(&physical_world);
 
-        assert_eq!(physics.get_pos(), (0.0, 2.0));
+        assert_eq!(physics.get_pos(), (2.0, 2.0));
     }
 
     #[test]
