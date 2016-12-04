@@ -632,8 +632,8 @@ impl PhysicsWorld
 
         let d_x = (adj_position1.x - adj_position2.x).abs();
         let d_y = (adj_position1.y - adj_position2.y).abs();
-        if ((d_x).abs() == range_x ||
-            (d_y).abs() == range_y )
+        if ((d_x - range_x).abs() < 0.01 ||
+            (d_y - range_y).abs() < 0.01)
         {
            return true; 
         }
