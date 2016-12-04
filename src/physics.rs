@@ -16,6 +16,7 @@ use self::ncollide::world::{CollisionWorld, CollisionWorld2,
 
 use std::f32::consts;
 use std::cell::{Cell as std_Cell, RefCell as std_RefCell};
+use std::collections::{HashSet};
 
 use ::actuators::*;
 use ::serialization::*;
@@ -669,6 +670,7 @@ impl PhysicsWorld
             self.world.update();
             let mut collisions = false;
             let mut corrections = vec![];
+            let mut corrected_uids = HashSet::new();
             for (pair_inx, coll_data) in self.world.proximity_pairs().enumerate()
             {
                 let (object_1, object_2, bx_prox_detect) = coll_data;
@@ -761,6 +763,13 @@ impl PhysicsWorld
                             other_obj = object_1;
                         }
                     }
+                    if corrected_uids.contains(&target_obj.uid)
+                    {
+                        // Avoid duplicates
+                        continue
+                    }
+
+
                     target_obj_new_pos = target_obj.data.initial_pos.get();
                     target_obj_new_pos.translation +=  displacements[ (loops + pair_inx) % displacements.len() ];
                     debug!("New Position: {}",
@@ -792,6 +801,7 @@ impl PhysicsWorld
                     }
 
                     target_obj.data.initial_pos.set(target_obj_new_pos);
+                    corrected_uids.insert(target_obj.uid);
                     corrections.push((target_obj.uid, target_obj_new_pos, target_obj.data.dimensions.get(), target_obj.data.corner.get(), other_obj.uid));
                 }
                 else
