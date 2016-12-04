@@ -508,7 +508,7 @@ impl PhysicsWorld
         let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
                                                               c_dimensions.1 as f32)));
 
-        let iso = Isometry2::new(zero(), zero());
+        let iso = Isometry2::new( Vector2::new(c_dimensions.0, c_dimensions.1), zero());
 
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()), 
@@ -632,8 +632,8 @@ impl PhysicsWorld
         let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
                                          other.position.translation.y + disp_2.y);
 
-        let d_x = adj_position1.x - adj_position2.x;
-        let d_y = adj_position1.y - adj_position2.y;
+        let d_x = (adj_position1.x - adj_position2.x).abs();
+        let d_y = (adj_position1.y - adj_position2.y).abs();
         if ((d_x).abs() == range_x ||
             (d_y).abs() == range_y )
         {
@@ -967,8 +967,25 @@ mod test
 
     }
 
-    fn test_physics_undoing()
-    {}
+    #[test]
+    fn test_moved_corner()
+    {
+        let _ = env_logger::init();
+        let mut physical_world = PhysicsWorld::new();
+        physical_world.add_object(2, (0.0, 0.0), (2, 2));
+        let mut physics = Physics::new_with_corner(1, (4, 4), -10.0, 0.0, 0, (-2, 0)); 
+        physical_world.add(&mut physics);
+
+        for i in 0..10
+        {
+            physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                           &mut physical_world);
+            physical_world.step();
+            physics.update_state(&physical_world);
+        }
+        assert_eq!(physics.get_pos(), (-2.0, 0.0));
+    }
 
     fn test_movement_accumulator_master(actions: ActionList, expected_impulse: f32, expected_direction: Direction)
     {
