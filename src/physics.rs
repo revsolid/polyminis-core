@@ -792,12 +792,12 @@ impl PhysicsWorld
                     }
 
                     target_obj.data.initial_pos.set(target_obj_new_pos);
-                    corrections.push((target_obj.uid, target_obj_new_pos, target_obj.data.dimensions.get(), other_obj.uid));
+                    corrections.push((target_obj.uid, target_obj_new_pos, target_obj.data.dimensions.get(), target_obj.data.corner.get(), other_obj.uid));
                 }
                 else
                 {
-                    corrections.push((object_1.uid, n_pos, object_1.data.dimensions.get(), object_2.uid));
-                    corrections.push((object_2.uid, n_pos_2, object_2.data.dimensions.get(), object_1.uid));
+                    corrections.push((object_1.uid, n_pos, object_1.data.dimensions.get(), object_1.data.corner.get(), object_2.uid));
+                    corrections.push((object_2.uid, n_pos_2, object_2.data.dimensions.get(), object_2.data.corner.get(), object_1.uid));
                 }
 
                 let ev = CollisionEvent
@@ -835,7 +835,7 @@ impl PhysicsWorld
                 error!("Last set of Corrections: ");
                 for c in &corrections
                 {
-                    error!("{} {:?} {} {}", c.0, c.1, c.2, c.3);
+                    error!("{} {:?} {} {:?} {}", c.0, c.1, c.2, c.3, c.4);
                 }
 
                 if loops == max_loops
