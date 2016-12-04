@@ -153,6 +153,11 @@ impl SimulationEpoch
         }
     }
 
+    pub fn get_environment(&self) -> &Environment
+    {
+        &self.environment
+    }
+
     // TODO: This should, in some way, destroy *self* epoch
     pub fn advance(&mut self) -> SimulationEpoch
     {

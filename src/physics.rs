@@ -531,7 +531,7 @@ impl PhysicsWorld
         let v = !self.finish_adding();
         if v 
         {
-            error!("Removing {}", physics.uuid);
+            warn!("Removing {}", physics.uuid);
             self.remove(physics);
             self.finish_adding();
             warn!("Removed");
@@ -700,7 +700,7 @@ impl PhysicsWorld
 
                 if loops >= (max_loops - 5)
                 {
-                    error!("Dumping collisions Loop({}) {} {}", loops, object_1.uid, object_2.uid);
+                    warn!("Dumping collisions Loop({}) {} {}", loops, object_1.uid, object_2.uid);
                 }
 
                 let mut n_pos = object_1.data.initial_pos.get();
@@ -708,7 +708,7 @@ impl PhysicsWorld
 
                 if max_loops - loops < 3
                 {
-                    error!("Start dumping: {} {}", object_1.position, object_2.position);
+                    warn!("Start dumping: {} {}", object_1.position, object_2.position);
                 }
 
 
@@ -909,6 +909,16 @@ mod test
         physics.update_state(&physical_world);
 
         assert_eq!(physics.get_pos(), (0.0, 2.0));
+    }
+
+    #[test]
+    fn test_placement_outside()
+    {
+        let mut physical_world = PhysicsWorld::new();
+        let mut physics = Physics::new(1, (4, 4), -20.0, 0.0, 0); 
+        physical_world.add_object(2, (0.0, 0.0), (2, 2));
+        physical_world.add(&mut physics);
+        physics.update_state(&physical_world);
     }
 
     #[test]

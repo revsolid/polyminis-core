@@ -63,15 +63,15 @@ impl fmt::Display for FitnessStatistic
 pub enum FitnessEvaluator
 {
     // Movement
-    OverallMovement,
-    DistanceTravelled,
-    TargetPosition((f32, f32)),
+    OverallMovement { weight: f32 },
+    DistanceTravelled { weight: f32},
+    TargetPosition { weight: f32, pos: (f32, f32)},
 
     // Shape
-    Shape,
+    Shape { weight: f32 },
 
     // Basic Stuff
-    Alive,
+    Alive { weight: f32 },
 }
 impl FitnessEvaluator
 {
@@ -81,7 +81,7 @@ impl FitnessEvaluator
 
         match *self
         {
-            FitnessEvaluator::OverallMovement => 
+            FitnessEvaluator::OverallMovement{ weight: w } => 
             {
                 let i = Instinct::Nomadic;
                 let v = statistics.iter().fold(0.0,
@@ -91,7 +91,7 @@ impl FitnessEvaluator
                                                   {
                                                       &FitnessStatistic::Moved =>
                                                       {
-                                                         accum += 0.5;
+                                                         accum += w;
                                                       },
                                                       _ => {}
                                                   }
@@ -100,7 +100,7 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Overall Movement", v, i);
                 (i, v)
             },
-            FitnessEvaluator::DistanceTravelled =>
+            FitnessEvaluator::DistanceTravelled { weight: w } =>
             {
                 let i = Instinct::Nomadic;
                 let v = statistics.iter().fold(0.0,
@@ -110,7 +110,7 @@ impl FitnessEvaluator
                                                   {
                                                       &FitnessStatistic::DistanceTravelled(dist) =>
                                                       {
-                                                         accum += (2.5 * dist as f32);
+                                                         accum += (w * dist as f32);
                                                       },
                                                       _ => {}
                                                   }
@@ -120,7 +120,7 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Distance Travelled", v, i);
                 (i, v)
             },
-            FitnessEvaluator::Shape =>
+            FitnessEvaluator::Shape { weight: w } =>
             {
                 let i = Instinct::Hoarding;
                 let v = statistics.iter().fold(0.0,
@@ -139,10 +139,10 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Shape", v, i);
                 (i,v)
             },
-            FitnessEvaluator::Alive =>
+            FitnessEvaluator::Alive { weight: w } =>
             {
                 let i = Instinct::Basic;
-                let v = statistics.iter().fold(10.0,
+                let v = statistics.iter().fold(w,
 
                                                |mut accum, stat|
                                                {
@@ -159,10 +159,10 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Staying Alive", v, i);
                 (i,v)
             },
-            FitnessEvaluator::TargetPosition(target) =>
+            FitnessEvaluator::TargetPosition { weight: w, pos: target } =>
             {
                 let i = Instinct::Basic;
-                let v = statistics.iter().fold(0.0,
+                let v = statistics.iter().fold(w,
 
                                                |mut accum, stat|
                                                {
@@ -172,8 +172,8 @@ impl FitnessEvaluator
                                                       {
                                                           let actual = ( (actual_x as f32) / 255.0,
                                                                          (actual_y as f32) / 255.0);
-                                                          accum = 10.0 * (target.0 - actual.0).abs() +
-                                                                  10.0 * (target.1 - actual.1).abs();
+                                                          accum = w * (target.0 - actual.0).abs() +
+                                                                  w * (target.1 - actual.1).abs();
                                                       },
                                                       _ => {}
                                                   }
