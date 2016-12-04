@@ -768,29 +768,29 @@ impl PhysicsWorld
                     debug!("New Position: {}",
                            target_obj_new_pos.translation.serialize(&mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG)));
 
-                    let left   = target_obj_new_pos.translation.x - target_obj.data.dimensions.get().x / 2.0;
-                    let right  = target_obj_new_pos.translation.x + target_obj.data.dimensions.get().x / 2.0;
-                    let bottom = target_obj_new_pos.translation.y - target_obj.data.dimensions.get().y / 2.0;
-                    let top    = target_obj_new_pos.translation.y + target_obj.data.dimensions.get().y / 2.0;
+                    let left   = target_obj_new_pos.translation.x + target_obj.data.corner.get().0 as f32;
+                    let right  = left + target_obj.data.dimensions.get().x as f32;
+                    let bottom = target_obj_new_pos.translation.y + target_obj.data.corner.get().1 as f32;
+                    let top    = bottom + target_obj.data.dimensions.get().y as f32;
 
                     if left < 0.0
                     {
-                        target_obj_new_pos.translation.x = target_obj.data.dimensions.get().x / 2.0; 
+                        target_obj_new_pos.translation.x = target_obj.data.corner.get().0 as f32; 
                     }
 
                     if right > self.dimensions.0 
                     {
-                        target_obj_new_pos.translation.x = self.dimensions.0 - target_obj.data.dimensions.get().x / 2.0; 
+                        target_obj_new_pos.translation.x = self.dimensions.0 - target_obj.data.dimensions.get().x - target_obj.data.corner.get().0 as f32; 
                     }
 
                     if bottom < 0.0
                     {
-                        target_obj_new_pos.translation.y = target_obj.data.dimensions.get().y / 2.0; 
+                        target_obj_new_pos.translation.y = target_obj.data.corner.get().1 as f32; 
                     }
 
                     if  top > 100.0 
                     {
-                        target_obj_new_pos.translation.y = self.dimensions.1 - target_obj.data.dimensions.get().y / 2.0; 
+                        target_obj_new_pos.translation.y = self.dimensions.1 - target_obj.data.dimensions.get().x - target_obj.data.corner.get().1 as f32;
                     }
 
                     target_obj.data.initial_pos.set(target_obj_new_pos);
@@ -908,7 +908,7 @@ mod test
         physical_world.add(&mut physics);
         physics.update_state(&physical_world);
 
-        assert_eq!(physics.get_pos(), (2.0, 2.0));
+        assert_eq!(physics.get_pos(), (0.0, 2.0));
     }
 
     #[test]
