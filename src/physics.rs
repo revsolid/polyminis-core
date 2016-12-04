@@ -786,7 +786,7 @@ impl PhysicsWorld
                         target_obj_new_pos.translation.y = target_obj.data.corner.get().1 as f32; 
                     }
 
-                    if  top > 100.0 
+                    if  top > self.dimensions.1 
                     {
                         target_obj_new_pos.translation.y = self.dimensions.1 - target_obj.data.dimensions.get().x - target_obj.data.corner.get().1 as f32;
                     }

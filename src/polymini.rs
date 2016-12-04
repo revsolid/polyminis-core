@@ -192,8 +192,6 @@ impl Polymini
 
     pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx)
     {
-        // TODO - Important for individuals that survive
-        // and handling Sim restarts
         info!("Reseting {} - Had Fitness {}", self.uuid, self.fitness());
         self.physics.reset( (random_ctx.gen_range(1, 100) as f32,
                              random_ctx.gen_range(1, 100) as f32) );
