@@ -773,7 +773,7 @@ impl PhysicsWorld
 
                     if left < 0.0
                     {
-                        target_obj_new_pos.translation.x = target_obj.data.corner.get().0 as f32; 
+                        target_obj_new_pos.translation.x = -1 * target_obj.data.corner.get().0 as f32; 
                     }
 
                     if right > self.dimensions.0 
@@ -783,7 +783,7 @@ impl PhysicsWorld
 
                     if bottom < 0.0
                     {
-                        target_obj_new_pos.translation.y = target_obj.data.corner.get().1 as f32; 
+                        target_obj_new_pos.translation.y = -1 * target_obj.data.corner.get().1 as f32; 
                     }
 
                     if  top > self.dimensions.1 
