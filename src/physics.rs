@@ -75,17 +75,15 @@ struct StaticCollider
 }
 impl Serializable for StaticCollider
 {
-    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("ID".to_owned(), self.uuid.to_json());
-        json_obj.insert("Position".to_owned(), self.position.to_json());
-        json_obj.insert("Dimensions".to_owned(), self.dimensions.to_json());
+        json_obj.insert("Position".to_owned(), Vector2::new(self.position.0, self.position.1).serialize(ctx));
+        json_obj.insert("Dimensions".to_owned(), Vector2::new(self.dimensions.0 as f32, self.dimensions.1 as f32).serialize(ctx));
         Json::Object(json_obj)
     }
 }
-
-
 
 #[derive(Debug)]
 struct PolyminiPhysicsData
