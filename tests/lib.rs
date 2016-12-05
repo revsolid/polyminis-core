@@ -62,6 +62,12 @@ mod test
 
         let env = Environment::new(2, default_sensors);
 
+        env.add_static_object( (0.0, 0.0), (dimensions.0 as u8, 1));
+        env.add_static_object( (0.0, 0.0), (1, dimensions.1 as u8));
+        env.add_static_object( (dimensions.0 - 1.0, 0.0), (1, dimensions.1 as u8));
+        env.add_static_object( (0.0, dimensions.1 - 1.0), (dimensions.0 as u8, 1));
+
+
         let gens_per_epoch = 100;
 
         let cfg = PGAConfig { max_generations: gens_per_epoch, population_size: 50,

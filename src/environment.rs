@@ -78,11 +78,6 @@ impl Environment
             objects: vec![],
         };
 
-        env.add_static_object( (0.0, 0.0), (dimensions.0 as u8, 1));
-        env.add_static_object( (0.0, 0.0), (1, dimensions.1 as u8));
-        env.add_static_object( (dimensions.0 - 1.0, 0.0), (1, dimensions.1 as u8));
-        env.add_static_object( (0.0, dimensions.1 - 1.0), (dimensions.0 as u8, 1));
-
         env
     }
 
