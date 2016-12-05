@@ -54,6 +54,7 @@ mod test
                                FitnessEvaluator::DistanceTravelled { weight: 1.0 },
                                FitnessEvaluator::Shape { weight: 5.0 },
                                FitnessEvaluator::Alive { weight: 10.0 },
+                               FitnessEvaluator::PositionsVisited { weight: 0.5 },
                                FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 1.0) }];
 
         let translation_table_species_1 = TranslationTable::new_from(&master_translation_table, &active_table_1);

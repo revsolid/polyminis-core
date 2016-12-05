@@ -218,6 +218,9 @@ impl Polymini
         }
 
         self.physics.update_state(world);
+        let pos_visited = self.physics.get_pos();
+        self.fitness_statistics.push(FitnessStatistic::PositionVisited((pos_visited.0 as u32,
+                                                                        pos_visited.1 as u32)));
     }
 
     pub fn get_morphology(&self) -> &Morphology

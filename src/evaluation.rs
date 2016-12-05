@@ -1,7 +1,7 @@
 use ::actuators::*;
 use ::instincts::*;
 use ::serialization::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 //TODO Maybe use naming or sub-enums?
@@ -14,6 +14,8 @@ pub enum FitnessStatistic
     // From Actions
     Moved,
     ConsumedFoodSource,
+
+    PositionVisited((u32, u32)),
 
     // Epoch-Wide
     DistanceTravelled(u32),
@@ -66,6 +68,7 @@ pub enum FitnessEvaluator
     OverallMovement { weight: f32 },
     DistanceTravelled { weight: f32},
     TargetPosition { weight: f32, pos: (f32, f32)},
+    PositionsVisited { weight: f32 },
 
     // Shape
     Shape { weight: f32 },
@@ -162,8 +165,7 @@ impl FitnessEvaluator
             FitnessEvaluator::TargetPosition { weight: w, pos: target } =>
             {
                 let i = Instinct::Basic;
-                let v = statistics.iter().fold(w,
-
+                let v = statistics.iter().fold(0.0,
                                                |mut accum, stat|
                                                {
                                                   match stat
@@ -186,6 +188,30 @@ impl FitnessEvaluator
                 debug!("Evaluated {} for {} due to Target Position {:?}", v, i, target);
                 (i,v)
             },
+            FitnessEvaluator::PositionsVisited { weight : w } =>
+            {
+                let i = Instinct::Nomadic;
+                let mut already_counted = HashSet::new();
+                let v = statistics.iter().fold(0.0,
+                                               |mut accum, stat|
+                                               {
+                                                  match stat
+                                                  {
+                                                      &FitnessStatistic::PositionVisited( pos ) =>
+                                                      {
+                                                          if !already_counted.contains(&pos)
+                                                          {
+                                                              already_counted.insert(pos);
+                                                              accum += w;
+                                                          }
+                                                      },
+                                                      _ => {}
+                                                  }
+                                                  accum
+                                               });
+                debug!("Evaluated {} for {} due to Positions Visited", v, i);
+                (i,v)
+            }
         }
     }
 }

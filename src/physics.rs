@@ -867,10 +867,10 @@ impl PhysicsWorld
             if loops >= (max_loops - 5)
             {
 
-                error!("Last set of Corrections: ");
+                warn!("Last set of Corrections: ");
                 for c in &corrections
                 {
-                    error!("{} {:?} {} {:?} {}", c.0, c.1, c.2, c.3, c.4);
+                    warn!("{} {:?} {} {:?} {}", c.0, c.1, c.2, c.3, c.4);
                 }
 
                 if loops == max_loops
