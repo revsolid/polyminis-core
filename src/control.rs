@@ -317,7 +317,7 @@ impl<'a> WeightsGenerator for RandomWeightsGenerator<'a>
 {
     fn generate(&mut self) -> f32
     {
-        self.rand_ctx.gen_range(0.0, 1.0)
+        self.rand_ctx.gen_range(-0.5, 0.5)
     }
 }
 
@@ -354,7 +354,7 @@ impl<'a> MutateWeightsGenerator<'a>
                 }
                 else
                 {
-                    v = ctx.gen_range(0.0, 1.0);
+                    v = ctx.gen_range(-0.5, 0.5);
                 }
                 w_values.push(v);
             }
@@ -364,7 +364,7 @@ impl<'a> MutateWeightsGenerator<'a>
 
         while b_values.len() < new_out_size
         {
-            b_values.push(ctx.gen_range(0.0, 1.0));
+            b_values.push(ctx.gen_range(-0.5, 0.5));
         }
 
         MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false, weights_generated: 0, max_weights: new_in_size*new_out_size + new_out_size,
@@ -397,7 +397,7 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
         {
             if self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32
             {
-                to_ret = self.rand_ctx.gen_range(0.0, 1.0);
+                to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
                 self.has_mutated = true;
             }
         }
@@ -447,7 +447,7 @@ impl CrossoverWeightsGenerator
                 }
                 else
                 {
-                    v = rand_ctx.gen_range(0.0, 1.0);
+                    v = rand_ctx.gen_range(-0.5, 0.5);
                 }
                 w_values.push(v);
             }
@@ -465,7 +465,7 @@ impl CrossoverWeightsGenerator
             }
             else
             {
-                b_values.push(rand_ctx.gen_range(0.0, 1.0));
+                b_values.push(rand_ctx.gen_range(-0.5, 0.5));
             }
         }
 

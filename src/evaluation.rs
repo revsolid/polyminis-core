@@ -176,9 +176,8 @@ impl FitnessEvaluator
                                                                          (actual_y as f32) / 255.0);
                                                           let dx = (target.0 - actual.0).abs();
                                                           let dy = (target.1 - actual.1).abs();
-                                                          accum = w * dx  +
-                                                                  w * dy;
-                                                          accum /= (dx * dx + dy * dy);
+                                                          accum = w * (1.0 - dx)  +
+                                                                  w * (1.0 - dy);
                                                       },
                                                       _ => {}
                                                   }
