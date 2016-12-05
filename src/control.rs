@@ -138,7 +138,11 @@ impl Control
     pub fn think(&mut self)
     {
         // Feedforward NN
-        let ins : Vec<f32> = self.inputs.clone();
+        let mut ins : Vec<f32> = self.inputs.clone();
+
+        // Move all the values from [0..1] to [-0.5, 0.5]
+        ins = ins.iter().map(|&v| { v - 0.5 }).collect();
+        
 
         let hid = self.nn[0].compute(&ins);
         let outs = self.nn[1].compute(&hid);

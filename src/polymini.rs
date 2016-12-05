@@ -46,7 +46,7 @@ impl Serializable for Stats
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("HP".to_owned(), self.hp.to_json());
         json_obj.insert("Energy".to_owned(), self.energy.to_json());
-        json_obj.insert("Speed".to_owned(), self.speed.to_json());
+        json_obj.insert("Speed".to_owned(), (self.speed + 1).to_json());
         json_obj.insert("Size".to_owned(), self.total_cells.to_json());
         Json::Object(json_obj)
     }
@@ -144,16 +144,10 @@ impl Polymini
         debug!("Action List Len: {}", actions.len());
         // Feed them into other systems
         
-        let mut record_move_statistic = true;
-        if substep <= self.get_speed()
-        {
-            self.physics.act_on(&actions, phys_world);
-        }
-        else
-        {
-            record_move_statistic = false;
-        }
+        let speed = self.get_speed();
+        self.physics.act_on(substep, speed, &actions, phys_world);
 
+        let mut record_move_statistic = true;
 
         for action in actions
         {
@@ -163,6 +157,7 @@ impl Polymini
                 Action::MoveAction(_) =>
                 {
                     if !self.physics.get_move_succeded() ||
+                       !self.physics.get_acted() ||
                        !record_move_statistic 
                     {
                         continue
@@ -193,8 +188,7 @@ impl Polymini
     pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx)
     {
         info!("Reseting {} - Had Fitness {}", self.uuid, self.fitness());
-        self.physics.reset( (random_ctx.gen_range(1, 100) as f32,
-                             random_ctx.gen_range(1, 100) as f32) );
+        self.physics.reset(random_ctx);
         self.set_fitness(0.0);
         self.set_raw(0.0);
         self.fitness_statistics.clear();
@@ -217,10 +211,7 @@ impl Polymini
             return
         }
 
-        if self.get_speed() >= substep
-        {
-            self.physics.update_state(world);
-        }
+        self.physics.update_state(world);
     }
 
     pub fn get_morphology(&self) -> &Morphology

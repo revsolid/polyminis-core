@@ -1,5 +1,5 @@
 //
-// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE rust_monster
+// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE rust_monster (except for random)
 extern crate rust_monster;
 use self::rust_monster::ga::ga_population::*;
 use self::rust_monster::ga::ga_selectors::*;
@@ -8,14 +8,14 @@ use self::rust_monster::ga::ga_selectors::*;
 pub use self::rust_monster::ga::ga_core::GAIndividual as PolyminiGAIndividual;
 // Alias GA
 pub use self::rust_monster::ga::ga_core::GeneticAlgorithm as PolyminiGA;
-// Alias GARandomCtx
-pub use self::rust_monster::ga::ga_random::GARandomCtx as PolyminiRandomCtx;
 //
 //
 //
 use ::evaluation::*;
 use ::instincts::*;
 use ::uuid::*;
+
+pub use ::random::PolyminiRandomCtx as PolyminiRandomCtx;
 
 use std::any::Any;
 

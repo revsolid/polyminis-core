@@ -17,6 +17,8 @@ pub mod physics;
 #[allow(dead_code)]
 pub mod polymini;
 #[allow(dead_code)]
+pub mod random;
+#[allow(dead_code)]
 pub mod sensors;
 #[allow(dead_code)]
 pub mod serialization;

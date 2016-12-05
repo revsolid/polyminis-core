@@ -21,6 +21,7 @@ use std::collections::{HashSet};
 use ::actuators::*;
 use ::serialization::*;
 use ::types::*;
+use ::random::*;
 use ::uuid::PUUID;
 
 // Polymini Physics Object Type
@@ -277,7 +278,7 @@ impl Physics
     pub fn new_with_corner(uuid: PUUID, dimensions: (u8, u8), x: f32, y: f32, orientation: u8, corner: (i8, i8)) -> Physics
     {
         let nc_dims = dimensions_sim_to_ncoll(dimensions);
-        let nc_pos = Vector2::new(x, y);//Vector2::new( (x + corner.0 as f32) + nc_dims.x / 2.0, y + (nc_dims.y + corner.1 as f32)/ 2.0);
+        let nc_pos = Vector2::new(x, y);
 
         Physics
         {
@@ -299,10 +300,11 @@ impl Physics
         }
     }
 
-    pub fn reset(&mut self, pos: (f32, f32))
+    pub fn reset(&mut self, ctx: &mut PolyminiRandomCtx)
     {
-        let n_pos = Vector2::new(pos.0, pos.1); // Vector2::new( (pos.0 + self.corner.0 as f32) + self.ncoll_dimensions.x / 2.0,
-                                                //              (pos.1 + self.corner.1 as f32) + self.ncoll_dimensions.y / 2.0 );
+        let n_pos = Vector2::new(ctx.gen_range(0.0, self.world_dimensions.0).floor(),
+                                 ctx.gen_range(0.0, self.world_dimensions.1).floor());
+                                              
         info!("Reseting Physics - New Pos: {} (Old Pos: {}", n_pos, self.ncoll_pos);
 
         self.ncoll_pos = n_pos;
@@ -312,24 +314,16 @@ impl Physics
     pub fn get_starting_pos(&self) -> (f32, f32)
     {
         (self.ncoll_starting_pos.x, self.ncoll_starting_pos.y)
-       /* (self.ncoll_starting_pos.x - self.ncoll_dimensions.x / 2.0,
-         self.ncoll_starting_pos.y - self.ncoll_dimensions.y / 2.0) */
     }
     pub fn get_pos(&self) -> (f32, f32)
     {
         (self.ncoll_pos.x, self.ncoll_pos.y)
-        /*
-        ( (self.ncoll_pos.x + self.corner.0) - self.ncoll_dimensions.x / 2.0,
-          (self.ncoll_pos.y + self.corner.1) - self.ncoll_dimensions.y / 2.0) */
     }
 
     pub fn get_normalized_pos(&self) -> (f32, f32)
     {
 
         (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.0)
-        /*
-        ( (self.ncoll_pos.x - self.ncoll_dimensions.x / 2.0)  / self.world_dimensions.0,
-          (self.ncoll_pos.y - self.ncoll_dimensions.y / 2.0)  / self.world_dimensions.1 )*/
     }
 
     pub fn get_distance_moved(&self) -> f32
@@ -348,9 +342,30 @@ impl Physics
         self.move_succeded
     }
 
-    // Attempt to add rotation / translation to our physics object
-    pub fn act_on(&mut self, actions: &ActionList, physics_world: &mut PhysicsWorld)
+    pub fn get_acted(&self) -> bool
     {
+        match &self.last_action
+        {
+            &Action::NoAction =>
+            {
+                false
+            },
+            _ =>
+            {
+                true
+            }
+        }
+    }
+
+    // Attempt to add rotation / translation to our physics object
+    pub fn act_on(&mut self, substep: usize, speed: usize, actions: &ActionList, physics_world: &mut PhysicsWorld)
+    {
+        if substep > speed
+        {
+            self.last_action = Action::NoAction;
+            return;
+        }
+
         // Only move actions are relevant to us
         let accum = actions.iter().fold(PhysicsActionAccumulator::new(),
                                        |mut accum, action|
@@ -393,7 +408,14 @@ impl Physics
         // If an attempt to move was made, but we didn't move, update
         // last move succeded
         //
-        self.move_succeded =  (self.collisions.len() == 0);
+        self.move_succeded =  if self.get_acted() 
+        {
+            (self.collisions.len() == 0)
+        }
+        else
+        {
+            self.move_succeded
+        };
 
         // Set our new initial position
         o.data.initial_pos.set(o.position);
@@ -938,51 +960,50 @@ mod test
         physical_world.add(&mut physics);
         physics.update_state(&physical_world);
 
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 0.0));
 
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
                        &mut physical_world);
 
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 1.0));
 
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 1.0));
 
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.3, 0.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.3, 0.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 0.0));
 
-
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
+ 
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 0.0));
 
-        physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                   Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
         //assert_eq!(physics.get_pos(), (0.0, 0.0));
         //TODO: ROTATION is currently disabled
-
     }
 
     #[test]
@@ -996,8 +1017,8 @@ mod test
 
         for i in 0..10
         {
-            physics.act_on(&vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-                                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
+                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
                            &mut physical_world);
             physical_world.step();
             physics.update_state(&physical_world);
