@@ -85,9 +85,10 @@ impl SimulationEpoch
         self.species.len() == self.environment.get_species_slots()
     }
 
-    pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
+   // pub fn add_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
+    pub fn add_object(&mut self, wo: WorldObject)
     {
-        self.environment.add_object(position, dimensions);
+        self.environment.add_object(wo);
     }
 
     pub fn add_species(&mut self, species: Species)
@@ -171,8 +172,7 @@ impl SimulationEpoch
         new_epoch_species.append(&mut self.species);
 
         // TODO: Advance the Environment's epoch and copy it over
-        let mut new_epoch = SimulationEpoch::new_with(Environment::new(self.environment.get_species_slots(),
-                                                                       self.environment.default_sensors.clone()),
+        let mut new_epoch = SimulationEpoch::new_with(self.environment.advance_epoch(),
                                                       self.max_steps);
 
 
@@ -186,7 +186,7 @@ impl SimulationEpoch
 
 
         // Proportions
-        self.proportions = self.species.iter().map( |ref species|  species.get_accum_score() / total_species_scores as f32 ).collect();
+        new_epoch.proportions = self.species.iter().map( |ref species|  species.get_accum_score() / total_species_scores as f32 ).collect();
 
         debug!("Advancing Epoch - Reinserting Species");
         for n_s in new_epoch_species
@@ -343,6 +343,7 @@ mod test
     use super::*;
 
     use ::control::*;
+    use ::environment::*;
     use ::morphology::*;
     use ::polymini::*;
     use ::serialization::*;
@@ -403,7 +404,7 @@ mod test
         let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
-        s.add_object((10.0, 2.0), (1, 1));
+        s.add_object(WorldObject::new_static_object((10.0, 2.0), (1, 1)));
         for _ in 0..10 
         {
             s.step();
@@ -435,7 +436,7 @@ mod test
         println!(">> {:?}", p2.get_physics().get_pos());
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object((20.0, 22.0), (1, 1));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
         for _ in 0..10 
         {
             s.step();
