@@ -76,6 +76,15 @@ impl Species
                 }
     }
 
+    pub fn restart(&mut self)
+    {
+        for i in 0..self.ga.get_population().size()
+        {
+            self.ga.get_population_mut().get_individual_mut(i).restart(&mut self.creation_context.get_random_ctx(),
+                                                                       &(*self.placement_function));
+        }
+    }
+
     pub fn reset(&mut self)
     {
         for i in 0..self.ga.get_population().size()

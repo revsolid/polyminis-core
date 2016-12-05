@@ -121,6 +121,12 @@ impl Environment
 
     pub fn advance_epoch(&self) -> Environment
     {
+        // For now advance_epoch and restart are equivalent
+        self.restart()
+    }
+
+    pub fn restart(&self) -> Environment
+    {
         let mut to_ret = Environment::new(self.species_slots,
                                           self.default_sensors.clone());
 

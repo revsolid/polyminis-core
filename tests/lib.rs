@@ -68,7 +68,7 @@ mod test
         env.add_static_object( (0.0, 99.0),  (100, 1));
 
 
-        let gens_per_epoch = 100;
+        let gens_per_epoch = 50;
 
         let cfg = PGAConfig { max_generations: gens_per_epoch, population_size: 50,
                               percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
@@ -84,7 +84,7 @@ mod test
                                    ));
 
         trace!("Adding Species");
-        let mut epoch = SimulationEpoch::new_with(env, gens_per_epoch as usize);
+        let mut epoch = SimulationEpoch::new_restartable(env, gens_per_epoch as usize, 1);
         epoch.add_species(ss);
         
         trace!("Swaping Species:");

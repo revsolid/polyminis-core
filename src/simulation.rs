@@ -65,19 +65,24 @@ pub struct SimulationEpoch
     steps: usize,
     substeps: usize,
     max_steps: usize,
+    restarts: usize,
 }
 impl SimulationEpoch
 {
     pub fn new() -> SimulationEpoch
     {
-        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4 }
+        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4, restarts: 0 }
     }
 
     pub fn new_with(environment: Environment, max_steps: usize) -> SimulationEpoch
     {
+        SimulationEpoch::new_restartable(environment, max_steps, 0)
+    }
+
+    pub fn new_restartable(environment: Environment, max_steps: usize, restarts: usize) -> SimulationEpoch
+    {
         SimulationEpoch { environment: environment, species: vec![], proportions: vec![], steps: 0,
-                          max_steps: max_steps, substeps:4 } 
-                                                // TODO: Parameterizable
+                          max_steps: max_steps, substeps:4, restarts: restarts }
     }
 
     pub fn is_full(&self) -> bool
@@ -159,6 +164,22 @@ impl SimulationEpoch
         &self.environment
     }
 
+    pub fn restart(&mut self)
+    {
+        self.environment = self.environment.restart();
+        for species in &mut self.species
+        {
+            species.restart();
+        }
+
+        let mut temp_species = vec![];
+        temp_species.append(&mut self.species);
+        for n_s in temp_species
+        {
+            self.add_species(n_s);
+        }
+    }
+
     // TODO: This should, in some way, destroy *self* epoch
     pub fn advance(&mut self) -> SimulationEpoch
     {
@@ -201,6 +222,14 @@ impl SimulationEpoch
     pub fn step(&mut self)
     {
         let substep = self.steps % self.substeps;
+
+        if self.steps == (self.max_steps * self.substeps) 
+        {
+            self.restart();
+            self.restarts -= 1;
+            self.steps = 0;
+        }
+
         self.init_phase();
         self.sense_phase();
         self.think_phase();
@@ -211,7 +240,7 @@ impl SimulationEpoch
 
     pub fn done(&self) -> bool
     {
-        self.steps == self.max_steps * self.substeps
+        self.steps == (self.max_steps * self.substeps) && self.restarts == 0
     }
 
     fn init_phase(&mut self)
