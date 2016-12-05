@@ -60,12 +60,12 @@ mod test
         let translation_table_species_2 = TranslationTable::new_from(&master_translation_table, &active_table_2);
 
 
-        let env = Environment::new(2, default_sensors);
+        let mut env = Environment::new(2, default_sensors);
 
-        env.add_static_object( (0.0, 0.0), (dimensions.0 as u8, 1));
-        env.add_static_object( (0.0, 0.0), (1, dimensions.1 as u8));
-        env.add_static_object( (dimensions.0 - 1.0, 0.0), (1, dimensions.1 as u8));
-        env.add_static_object( (0.0, dimensions.1 - 1.0), (dimensions.0 as u8, 1));
+        env.add_static_object( (0.0, 0.0),   (100, 1));
+        env.add_static_object( (0.0, 0.0),   (1, 100));
+        env.add_static_object( (99.0, 0.0),  (1, 100));
+        env.add_static_object( (0.0, 99.0),  (100, 1));
 
 
         let gens_per_epoch = 100;
