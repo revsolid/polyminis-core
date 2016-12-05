@@ -4,6 +4,7 @@ use ::evaluation::*;
 use ::genetics::*;
 use ::morphology::*;
 use ::polymini::*;
+use ::physics::*;
 use ::serialization::*;
 use ::uuid::*;
 
@@ -12,6 +13,7 @@ pub struct Species
     name: String,
     ga: PolyminiGeneticAlgorithm<Polymini>,
     creation_context: PolyminiCreationCtx,
+    placement_function: Box<PlacementFunction>,
 }
 impl Species
 {
@@ -31,13 +33,19 @@ impl Species
         Species {
                   name: sp_name,
                   ga: PolyminiGeneticAlgorithm::new(pop, id, cfg),
-                  creation_context: PolyminiCreationCtx::empty()
+                  creation_context: PolyminiCreationCtx::empty(),
+                  placement_function: Box::new( |ctx: &mut PolyminiRandomCtx|
+                                              {
+                                                  ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
+                                                    (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                              })
                 }
     }
 
     pub fn new_from(name: String,
                     translation_table: TranslationTable,
-                    default_sensors: &Vec<Sensor>, pgaconfig: PGAConfig) -> Species
+                    default_sensors: &Vec<Sensor>, pgaconfig: PGAConfig,
+                    placement_func: Box<PlacementFunction>) -> Species
     {
 
         let mut inds = vec![];
@@ -48,7 +56,7 @@ impl Species
         {
             let morph = Morphology::new_random(&translation_table,
                                                &mut ctx, pgaconfig.genome_size);
-            let pos = (ctx.gen_range(0, 100) as f32, ctx.gen_range(0, 100) as f32);
+            let pos = placement_func(&mut ctx);
 
             let mut sensor_list = default_sensors.clone();
             sensor_list.append(&mut morph.get_sensor_list());
@@ -63,7 +71,8 @@ impl Species
         Species {
                   name: name,
                   ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
-                  creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx)
+                  creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
+                  placement_function: placement_func,
                 }
     }
 
@@ -71,7 +80,8 @@ impl Species
     {
         for i in 0..self.ga.get_population().size()
         {
-            self.ga.get_population_mut().get_individual_mut(i).reset(&mut self.creation_context.get_random_ctx());
+            self.ga.get_population_mut().get_individual_mut(i).reset(&mut self.creation_context.get_random_ctx(),
+                                                                     &(*self.placement_function));
         }
     }
 

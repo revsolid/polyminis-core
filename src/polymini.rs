@@ -185,10 +185,10 @@ impl Polymini
         debug!("Fitness Statistics Len: {}", self.fitness_statistics.len());
     }
 
-    pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx)
+    pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx, placement_func: &PlacementFunction)
     {
         info!("Reseting {} - Had Fitness {}", self.uuid, self.fitness());
-        self.physics.reset(random_ctx);
+        self.physics.reset(random_ctx, placement_func);
         self.set_fitness(0.0);
         self.set_raw(0.0);
         self.fitness_statistics.clear();

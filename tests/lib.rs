@@ -69,7 +69,13 @@ mod test
 
         trace!("Creating Species");
         let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,
-                                   &env.default_sensors, cfg);
+                                   &env.default_sensors, cfg,
+                                   Box::new( | ctx: &mut PolyminiRandomCtx |
+                                   {
+                                        ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
+                                          (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                   }
+                                   ));
 
         trace!("Adding Species");
         let mut epoch = SimulationEpoch::new_with(env, gens_per_epoch as usize);

@@ -24,6 +24,9 @@ use ::types::*;
 use ::random::*;
 use ::uuid::PUUID;
 
+//
+pub type PlacementFunction = Fn(&mut PolyminiRandomCtx) -> (f32, f32);
+
 // Polymini Physics Object Type
 #[derive(Debug)]
 enum PPOType 
@@ -300,10 +303,10 @@ impl Physics
         }
     }
 
-    pub fn reset(&mut self, ctx: &mut PolyminiRandomCtx)
+    pub fn reset(&mut self, ctx: &mut PolyminiRandomCtx, placement_func: &PlacementFunction)
     {
-        let n_pos = Vector2::new(ctx.gen_range(0.0, self.world_dimensions.0).floor(),
-                                 ctx.gen_range(0.0, self.world_dimensions.1).floor());
+        let n_pos_tup = placement_func(ctx); 
+        let n_pos = Vector2::new(n_pos_tup.0, n_pos_tup.1);
                                               
         info!("Reseting Physics - New Pos: {} (Old Pos: {}", n_pos, self.ncoll_pos);
 
