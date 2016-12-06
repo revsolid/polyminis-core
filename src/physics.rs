@@ -329,6 +329,7 @@ impl Physics
 
         self.ncoll_pos = n_pos;
         self.ncoll_starting_pos = n_pos;
+        self.orientation = 0;
     }
 
     pub fn get_starting_pos(&self) -> (f32, f32)
