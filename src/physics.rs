@@ -166,9 +166,7 @@ impl PhysicsActionAccumulator
             _ => panic!("Incorrect direction for impulse {:?}", dir)
         }
 
-        // TODO: Drop rotations for now, there's a split view situation between the client
-        // implementation of rotation and the server
-        //self.spin += torque;
+        self.spin += torque;
     }
 
     fn to_action(&self) -> Action
@@ -225,6 +223,25 @@ fn dimensions_ncoll_to_sim(dim: Vector2<f32>) -> (u8, u8)
 fn serialize_vector(v: Vector2<f32>) -> Json
 {
     (v.x, v.y).to_json()
+}
+
+fn ncoll_orientation_sim_orientation(rotation: &Rotation2<f32>)-> u8
+{
+    let rot = (rotation.rotation().x * 100.0).round() / 100.0;
+    let pi_2 = (consts::FRAC_PI_2 * 100.0).round() / 100.0; 
+    let v = if rot < 0.0
+    {
+        -1.0*rot + 2.0*pi_2
+    }
+    else
+    {
+        rot
+    };
+
+    debug!("{}", v);
+    let k =  ( v / pi_2 ) ;
+    debug!("{}", k );
+    (k).floor() as u8 % 4
 }
 
 
@@ -426,22 +443,13 @@ impl Physics
         // Nuke'm
         o.data.collision_events.borrow_mut().clear();
 
-        
         // Calculate orientation,
         //
-        let pi = consts::FRAC_PI_2 * 2.0;
-        let v = if o.position.rotation.rotation().x < 0.0
-        {
-            o.position.rotation.rotation().x +  pi
-        }
-        else
-        {
-            o.position.rotation.rotation().x
-        };
-        self.orientation = ( 4.0 * ( v / pi ) ).floor() as u8;
+        self.orientation = ncoll_orientation_sim_orientation(&o.position.rotation);
 
         debug!("Orientation ncoll {}", o.position.rotation.rotation());
-        debug!("Orientation {}", self.get_orientation()); 
+        debug!("Orientation Inx {}", self.orientation); 
+        debug!("Orientation Enum {}", self.get_orientation()); 
     }
 
     pub fn update_starting_position(&mut self, physics_world: &PhysicsWorld)
@@ -590,8 +598,7 @@ impl PhysicsWorld
                     }
                     debug!("Before rotation {}", p_obj.position.translation);
                     new_pos = p_obj.position.prepend_rotation(&(Vector1::new(consts::FRAC_PI_2) * m));
-
-                    debug!("After rotation {}", new_pos.translation);
+                    debug!("After rotation {}", new_pos);
                 },
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, impulse, _)) =>
                 {
@@ -621,6 +628,8 @@ impl PhysicsWorld
                 }
             }
         }
+        new_pos.translation.x = ( new_pos.translation.x * 100.0 ).round() / 100.0;
+        new_pos.translation.y = ( new_pos.translation.y * 100.0 ).round() / 100.0;
         self.world.deferred_set_position(id, new_pos)
     }
 
@@ -636,36 +645,88 @@ impl PhysicsWorld
 
     fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>) -> bool
     {
-        //TODO: Rotated cases
-        let range_x = (one.data.dimensions.get().x + other.data.dimensions.get().x) / 2.0;
-        let range_y = (one.data.dimensions.get().y + other.data.dimensions.get().y) / 2.0;
+        let orientation_1 = ncoll_orientation_sim_orientation(&one.position.rotation);
+        let dimensions_1;
+        let h_1;
+        let v_1;
+        if orientation_1 % 2 == 0
+        {
+            dimensions_1 = one.data.dimensions.get();
+            h_1 = dimensions_1.x;
+            v_1 = dimensions_1.y;
+        }
+        else
+        {
+            dimensions_1 = Vector2::new(one.data.dimensions.get().y, one.data.dimensions.get().x);
+            h_1 = dimensions_1.y;
+            v_1 = dimensions_1.x;
+        };
+
+        let orientation_2 = ncoll_orientation_sim_orientation(&other.position.rotation);
+        let dimensions_2;
+        let h_2;
+        let v_2;
+        if orientation_2 % 2 == 0
+        {
+            dimensions_2 = other.data.dimensions.get();
+            h_2 = dimensions_2.x;
+            v_2 = dimensions_2.y;
+        }
+        else
+        {
+            dimensions_2 = Vector2::new(other.data.dimensions.get().y, one.data.dimensions.get().x);
+            h_2 = dimensions_2.y;
+            v_2 = dimensions_2.x;
+        };
+
+        let range_x = (h_1 + h_2) / 2.0;
+        let range_y = (v_1 + v_2) / 2.0;
+
+        let corner_1 = one.position.rotation *
+                       Vector2::new(one.data.corner.get().0 as f32, one.data.corner.get().1 as f32);
+        let corner_2 = other.position.rotation *
+                       Vector2::new(other.data.corner.get().0 as f32, other.data.corner.get().1 as f32);
+
+        let disp_1 = one.position.rotation *
+                     Vector2::new(one.data.dimensions.get().x / 2.0 + one.data.corner.get().0 as f32,
+                                  one.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
 
 
-        let disp = Vector2::new(one.data.dimensions.get().x / 2.0 + one.data.corner.get().0 as f32,
-                                one.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
+        let adj_position1 = Vector2::new(one.position.translation.x + disp_1.x,
+                                         one.position.translation.y + disp_1.y);
 
 
-        let adj_position1 = Vector2::new(one.position.translation.x + disp.x,
-                                         one.position.translation.y + disp.y);
-
-
-        let disp_2 = Vector2::new(other.data.dimensions.get().x / 2.0 + other.data.corner.get().0 as f32,
-                                  other.data.dimensions.get().y / 2.0 + other.data.corner.get().1 as f32);
+        let disp_2 = other.position.rotation *
+                     Vector2::new(other.data.dimensions.get().x / 2.0 + other.data.corner.get().0 as f32,
+                                  other.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
 
 
         let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
                                          other.position.translation.y + disp_2.y);
 
+
         let d_x = (adj_position1.x - adj_position2.x).abs();
         let d_y = (adj_position1.y - adj_position2.y).abs();
+     
+
+        debug!("Potential Collision:");
+        debug!("Object1 Pos(ncollide) {} Orientation(int) {}", one.position, orientation_1);
+        debug!("Object1 Dimensions {} Rotated {}", one.data.dimensions.get(), dimensions_1);
+        debug!("Object1 Corner {:?} Rotated {:?}", one.data.corner.get(), corner_1);
+        debug!("Object1 Adjusted Position {}", adj_position1);
+
+        debug!("Object2 Pos(ncollide) {} Orientation(int) {}", other.position, orientation_2);
+        debug!("Object2 Dimensions {} Rotated {}", other.data.dimensions.get(), dimensions_2);
+        debug!("Object2 Corner {:?} Rotated {:?}", other.data.corner.get(), corner_2);
+        debug!("Object2 Adjusted Position {}", adj_position2);
+
+        debug!("Delta X: {} Delta Y:{} Range X: {} Range Y: {}", d_x, d_y, range_x, range_y);
         if ((d_x - range_x).abs() < 0.01 ||
             (d_y - range_y).abs() < 0.01)
         {
            return true; 
         }
 
-
-        debug!("Not only touching {} {} {} {}", d_x, d_y, range_x, range_y);
 
 
         return false;
@@ -968,7 +1029,7 @@ mod test
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 0.0));
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
 
         physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
@@ -976,21 +1037,21 @@ mod test
 
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 1.0));
+        assert_eq!(physics.get_pos(), (0.0, 1.0));
 
         physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 1.0));
+        assert_eq!(physics.get_pos(), (0.0, 1.0));
 
         physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.3, 0.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 0.0));
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
 
  
         physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
@@ -998,15 +1059,14 @@ mod test
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 0.0));
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
 
         physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, -2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
-        //assert_eq!(physics.get_pos(), (0.0, 0.0));
-        //TODO: ROTATION is currently disabled
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
     }
 
     #[test]
@@ -1027,6 +1087,32 @@ mod test
             physics.update_state(&physical_world);
         }
         assert_eq!(physics.get_pos(), (-2.0, 0.0));
+    }
+
+    #[test]
+    fn test_collision_moved_corner()
+    {
+        let _ = env_logger::init();
+        let mut physical_world = PhysicsWorld::new();
+        physical_world.add_object(2, (0.0, 0.0), (2, 2));
+        let mut physics = Physics::new_with_corner(1, (4, 4), -5.0, 0.0, 0, (-2, 0)); 
+        physical_world.add(&mut physics);
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
+                                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+
+
+        for i in 0..10
+        {
+            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 0.2, 0.0)),
+                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0))],
+                           &mut physical_world);
+            physical_world.step();
+            physics.update_state(&physical_world);
+        }
+        assert_eq!(physics.get_pos(), (0.0, 0.0));
     }
 
     fn test_movement_accumulator_master(actions: ActionList, expected_impulse: f32, expected_direction: Direction)
@@ -1053,8 +1139,8 @@ mod test
             Action::MoveAction(MoveAction::Move(dir, impulse, _)) =>
             {
                 // TODO: ROTATION is currently disabled
-                //assert_eq!(dir, expected_direction);
-                //assert!( (impulse - expected_impulse) < 0.001);
+                assert_eq!(dir, expected_direction);
+                assert!( (impulse - expected_impulse) < 0.001);
             },
             WrongAction =>
             {
