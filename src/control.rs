@@ -175,7 +175,7 @@ impl Control
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
-        let hid_len = self.hidden_layer_size;
+        let hid_len = (self.hidden_layer_size + other.hidden_layer_size) / 2;
         let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);
         debug!("Crossing In to Hidden Layer - {}", self.nn[0].get_coefficients().len());
         let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_in_size, hid_len);
