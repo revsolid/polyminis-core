@@ -13,6 +13,8 @@ use ::genetics::*;
 use ::serialization::*;
 use ::types::*;
 
+use std::cmp::{max};
+
 pub struct Perspective
 {
     pub id: usize,
@@ -186,8 +188,17 @@ impl Control
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>,
                   new_actuator_list: Vec<Actuator>)
     {
-        //TODO: Mutate Hid layer size (?) 
         
+        let delta_hl: i32 = random_ctx.gen_range(-2, 2);
+
+        let new_hid_size = if (self.hidden_layer_size as i32) + delta_hl >= 1
+        {
+            ((self.hidden_layer_size as i32) + delta_hl) as usize
+        }
+        else
+        {
+            1
+        };
 
         let new_in_size =  Sensor::get_total_cardinality(&new_sensor_list);
         let new_out_size = new_actuator_list.len();
@@ -195,14 +206,15 @@ impl Control
         let old_in_size =  self.inputs.len();
         let old_out_size = self.outputs.len();
         if  new_in_size  != old_in_size ||
-            new_out_size != old_out_size /* Brain Changed */
+            new_out_size != old_out_size ||
+            new_hid_size  != self.hidden_layer_size         /* Brain Changed */
         {
             if new_in_size != old_in_size
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[0],
                                                                  old_in_size, self.hidden_layer_size,
-                                                                 new_in_size, self.hidden_layer_size);
-                self.nn[0] = FeedforwardLayer::new_from(new_in_size, self.hidden_layer_size, sigmoid(),
+                                                                 new_in_size, new_hid_size);
+                self.nn[0] = FeedforwardLayer::new_from(new_in_size, new_hid_size, sigmoid(),
                                                         || (weight_gen.generate()));
                 debug!("{}", self.nn[0].get_coefficients().len());
 
@@ -212,12 +224,15 @@ impl Control
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[1],
                                                                  self.hidden_layer_size, old_out_size,
-                                                                 self.hidden_layer_size, new_out_size);
+                                                                 new_hid_size, new_out_size);
 
-                self.nn[1] = FeedforwardLayer::new_from(self.hidden_layer_size, new_out_size, sigmoid(),
+                self.nn[1] = FeedforwardLayer::new_from(new_hid_size, new_out_size, sigmoid(),
                                                         || (weight_gen.generate()));
                 debug!("{}", self.nn[1].get_coefficients().len());
             }
+
+            self.hidden.resize(new_hid_size, 0.0);
+            self.hidden_layer_size = self.hidden.len();
         }
         else  /* Structure of Brain unchanged */
         {
@@ -432,7 +447,7 @@ impl CrossoverWeightsGenerator
             for j in 0..new_out_size
             {
                 let v;
-                if i < old_in_size && j < old_out_size
+                if i < old_in_size && j < old_out_size && parent1_inx < l1.get_coefficients().len()
                 {
                     debug!("{} {} {} {}", i, j, old_in_size, old_out_size);
                     debug!("{}", l1.get_coefficients().len());
@@ -452,7 +467,7 @@ impl CrossoverWeightsGenerator
                 w_values.push(v);
             }
         }
-
+        debug!("Outerloop");
         for o in 0..new_out_size
         {
             if o < l1.get_biases().len()
