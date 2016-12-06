@@ -178,6 +178,7 @@ impl FitnessEvaluator
                                                           let dy = (target.1 - actual.1).abs();
                                                           accum = w * (1.0 - dx)  +
                                                                   w * (1.0 - dy);
+                                                          accum /= (dx*dx + dy*dy);
                                                       },
                                                       _ => {}
                                                   }
