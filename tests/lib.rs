@@ -50,8 +50,8 @@ mod test
                                     Sensor::new(SensorTag::Orientation, 1),
                                     Sensor::new(SensorTag::LastMoveSucceded, 1)];
 
-        let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 0.5 },
-                               FitnessEvaluator::DistanceTravelled { weight: 1.0 },
+        let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 2.5 },
+                               FitnessEvaluator::DistanceTravelled { weight: 2.0 },
                                FitnessEvaluator::Shape { weight: 5.0 },
                                FitnessEvaluator::Alive { weight: 10.0 },
                                FitnessEvaluator::PositionsVisited { weight: 0.5 },

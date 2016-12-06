@@ -66,12 +66,13 @@ pub struct SimulationEpoch
     substeps: usize,
     max_steps: usize,
     restarts: usize,
+    restarts_left: usize,
 }
 impl SimulationEpoch
 {
     pub fn new() -> SimulationEpoch
     {
-        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4, restarts: 0 }
+        SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4, restarts: 0, restarts_left: 0 }
     }
 
     pub fn new_with(environment: Environment, max_steps: usize) -> SimulationEpoch
@@ -82,7 +83,7 @@ impl SimulationEpoch
     pub fn new_restartable(environment: Environment, max_steps: usize, restarts: usize) -> SimulationEpoch
     {
         SimulationEpoch { environment: environment, species: vec![], proportions: vec![], steps: 0,
-                          max_steps: max_steps, substeps:4, restarts: restarts }
+                          max_steps: max_steps, substeps:4, restarts: restarts, restarts_left: restarts }
     }
 
     pub fn is_full(&self) -> bool
@@ -193,8 +194,7 @@ impl SimulationEpoch
         new_epoch_species.append(&mut self.species);
 
         // TODO: Advance the Environment's epoch and copy it over
-        let mut new_epoch = SimulationEpoch::new_with(self.environment.advance_epoch(),
-                                                      self.max_steps);
+        let mut new_epoch = SimulationEpoch::new_restartable(self.environment.advance_epoch(), self.max_steps, self.restarts);
 
 
         // Calculate Proportions of the species' fitness
@@ -226,7 +226,7 @@ impl SimulationEpoch
         if self.steps == (self.max_steps * self.substeps) 
         {
             self.restart();
-            self.restarts -= 1;
+            self.restarts_left -= 1;
             self.steps = 0;
         }
 
@@ -240,7 +240,7 @@ impl SimulationEpoch
 
     pub fn done(&self) -> bool
     {
-        self.steps == (self.max_steps * self.substeps) && self.restarts == 0
+        self.steps == (self.max_steps * self.substeps) && self.restarts_left == 0
     }
 
     fn init_phase(&mut self)
