@@ -644,7 +644,7 @@ impl PhysicsWorld
         self.step_internal(false, true)
     }
 
-    fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>) -> bool
+    fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>, dump: bool) -> bool
     {
         let orientation_1 = ncoll_orientation_sim_orientation(&one.position.rotation);
         let dimensions_1;
@@ -675,7 +675,7 @@ impl PhysicsWorld
         }
         else
         {
-            dimensions_2 = Vector2::new(other.data.dimensions.get().y, one.data.dimensions.get().x);
+            dimensions_2 = Vector2::new(other.data.dimensions.get().y, other.data.dimensions.get().x);
             h_2 = dimensions_2.y;
             v_2 = dimensions_2.x;
         };
@@ -710,18 +710,23 @@ impl PhysicsWorld
         let d_y = (adj_position1.y - adj_position2.y).abs();
      
 
-        debug!("Potential Collision:");
-        debug!("Object1 Pos(ncollide) {} Orientation(int) {}", one.position, orientation_1);
-        debug!("Object1 Dimensions {} Rotated {}", one.data.dimensions.get(), dimensions_1);
-        debug!("Object1 Corner {:?} Rotated {:?}", one.data.corner.get(), corner_1);
-        debug!("Object1 Adjusted Position {}", adj_position1);
+        if dump
+        {
+            warn!("Potential Collision:");
+            warn!("Object 1 {}", one.uid);
+            warn!("Object1 Pos(ncollide) {} Orientation(int) {}", one.position, orientation_1);
+            warn!("Object1 Dimensions {} Rotated {}", one.data.dimensions.get(), dimensions_1);
+            warn!("Object1 Corner {:?} Rotated {:?}", one.data.corner.get(), corner_1);
+            warn!("Object1 Adjusted Position {}", adj_position1);
 
-        debug!("Object2 Pos(ncollide) {} Orientation(int) {}", other.position, orientation_2);
-        debug!("Object2 Dimensions {} Rotated {}", other.data.dimensions.get(), dimensions_2);
-        debug!("Object2 Corner {:?} Rotated {:?}", other.data.corner.get(), corner_2);
-        debug!("Object2 Adjusted Position {}", adj_position2);
+            warn!("Object 2 {}", other.uid);
+            warn!("Object2 Pos(ncollide) {} Orientation(int) {}", other.position, orientation_2);
+            warn!("Object2 Dimensions {} Rotated {}", other.data.dimensions.get(), dimensions_2);
+            warn!("Object2 Corner {:?} Rotated {:?}", other.data.corner.get(), corner_2);
+            warn!("Object2 Adjusted Position {}", adj_position2);
 
-        debug!("Delta X: {} Delta Y:{} Range X: {} Range Y: {}", d_x, d_y, range_x, range_y);
+            warn!("Delta X: {} Delta Y:{} Range X: {} Range Y: {}", d_x, d_y, range_x, range_y);
+        }
         if ((d_x - range_x).abs() < 0.01 ||
             (d_y - range_y).abs() < 0.01)
         {
@@ -768,7 +773,7 @@ impl PhysicsWorld
                     Proximity::Intersecting =>
                     {
                         debug!("Intersecting");
-                        if PhysicsWorld::just_touching(&object_1, &object_2)
+                        if PhysicsWorld::just_touching(&object_1, &object_2, loops >= (max_loops - 5))
                         {
                             continue
                         }
@@ -932,7 +937,8 @@ impl PhysicsWorld
                 warn!("Last set of Corrections: ");
                 for c in &corrections
                 {
-                    warn!("{} {:?} {} {:?} {}", c.0, c.1, c.2, c.3, c.4);
+                    warn!("Obj1.ID: {} pos: {:?} dimension: {} corner: {:?} Obj2.ID {}", c.0, c.1, c.2, c.3, c.4);
+                    warn!("Orientation {}", ncoll_orientation_sim_orientation(&c.1.rotation));
                 }
 
                 if loops == max_loops
@@ -1114,6 +1120,25 @@ mod test
             physics.update_state(&physical_world);
         }
         assert_eq!(physics.get_pos(), (0.0, 0.0));
+    }
+
+    #[test]
+    fn test_rotate_collision()
+    {
+        let _ = env_logger::init();
+        let mut physical_world = PhysicsWorld::new();
+        physical_world.add_object(2, (0.0, 0.0), (2, 2));
+        let mut physics = Physics::new_with_corner(1, (4, 4), -2.0, 0.0, 0, (-2, 0)); 
+        physical_world.add(&mut physics);
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, -2.0)),
+                                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+                       &mut physical_world);
+        physical_world.step();
+        physics.update_state(&physical_world);
+
+        assert_eq!(physics.get_pos(), (-2.0, 0.0));
+        assert_eq!(physics.get_orientation(), Direction::UP);
+
     }
 
     fn test_movement_accumulator_master(actions: ActionList, expected_impulse: f32, expected_direction: Direction)
