@@ -45,6 +45,11 @@ impl SerializationCtx
     {
         SerializationCtx { flags: flags }
     }
+    
+    pub fn debug() -> SerializationCtx
+    {
+        SerializationCtx { flags: PM_SF_DEBUG }
+    }
 
     pub fn has_flag(&self, flags: SerializationFlags) -> bool
     {

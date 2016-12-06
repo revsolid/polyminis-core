@@ -198,6 +198,7 @@ impl TranslationTable
             Some(trait_value) =>
             {
                 polymini_trait = *trait_value;
+                debug!("Morphology::ChromosomeCreate {:?}", polymini_trait);
             }
             None =>
             { 

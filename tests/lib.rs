@@ -31,8 +31,8 @@ mod test
         let mut master_translation_table = HashMap::new();
 
         master_translation_table.insert( (TraitTier::TierI, 1), PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::SpeedTrait));
-        master_translation_table.insert( (TraitTier::TierI, 2), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveHorizontal));
-        master_translation_table.insert( (TraitTier::TierI, 3), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveVertical));
+        master_translation_table.insert( (TraitTier::TierI, 3), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveHorizontal));
+        master_translation_table.insert( (TraitTier::TierI, 2), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveVertical));
 
         let mut active_table_1 = HashSet::new();
         active_table_1.insert( (TraitTier::TierI, 3) );
@@ -55,7 +55,9 @@ mod test
                                FitnessEvaluator::Shape { weight: 5.0 },
                                FitnessEvaluator::Alive { weight: 10.0 },
                                FitnessEvaluator::PositionsVisited { weight: 0.5 },
-                               FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 1.0) }];
+                               FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 1.0) },
+                               FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 0.0) },
+                               ];
 
         let translation_table_species_1 = TranslationTable::new_from(&master_translation_table, &active_table_1);
         let translation_table_species_2 = TranslationTable::new_from(&master_translation_table, &active_table_2);

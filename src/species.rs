@@ -50,7 +50,7 @@ impl Species
 
         let mut inds = vec![];
         let uuid = PolyminiUUIDCtx::next(); 
-        let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, uuid as u32], format!("Species {}", uuid));
+        let mut ctx = PolyminiRandomCtx::from_seed([uuid as u32, 1, 2, uuid as u32], format!("Species {}", uuid));
 
         for i in 0..pgaconfig.population_size
         {

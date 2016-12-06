@@ -186,20 +186,24 @@ impl PhysicsActionAccumulator
         {
             dir = Direction::VERTICAL;
             v = self.vertical_impulse; 
+            debug!("MoveAccum::to_action: Vertical {}", v);
         }
         else if max == horizontal_impulse
         {
             dir = Direction::HORIZONTAL;
             v = self.horizontal_impulse; 
+            debug!("MoveAccum::to_action: Horizontal {}", v);
         }
         else if max == spin
         {
             dir = Direction::ROTATION;
             v = self.spin; 
+            debug!("MoveAccum::to_action: Rotation {}", v);
         }
 
         if v != 0.0
         {
+            debug!("MoveAccum::result: {} {}", dir, v);
             Action::MoveAction(MoveAction::Move(dir, v, 0.0))
         }
         else
@@ -1191,6 +1195,17 @@ mod test
                                                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
                                           2.0,
                                           Direction::ROTATION);
+    }
+
+    #[test]
+    fn test_movement_accumulator_3()
+    {
+        test_movement_accumulator_master( vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
+                                               Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0)),
+                                               Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.5, 0.0))],
+                                          -2.5,
+                                          Direction::VERTICAL);
+
     }
 
 

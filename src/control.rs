@@ -150,7 +150,7 @@ impl Control
         self.hidden = hid.clone();
 
         assert_eq!(outs.len(), self.outputs.len());
-        self.outputs = outs.clone();
+        self.outputs = outs.iter().map(|&v| { v - 0.5 }).collect();
     }
     pub fn get_actions(&self) -> ActionList
     {
