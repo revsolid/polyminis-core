@@ -528,10 +528,12 @@ impl Morphology
 
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)
     {
-        let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
-        let allele_to_mutate = random_ctx.gen_range(0, 4);
-
-        self.original_chromosome[chromosome_to_mutate][allele_to_mutate] = random_ctx.gen::<u8>();
+        for i in 0..random_ctx.gen_range(1, 8)
+        {
+            let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
+            let allele_to_mutate = random_ctx.gen_range(0, 4);
+            self.original_chromosome[chromosome_to_mutate][allele_to_mutate] = random_ctx.gen::<u8>();
+        }
 
         // After mutating the chromosome is possible the whole morphology representation has
         // changed
