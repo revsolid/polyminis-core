@@ -189,6 +189,11 @@ impl Polymini
     {
         info!("Restarting {} - Had Fitness {}", self.uuid, self.fitness());
         self.physics.reset(random_ctx, placement_func);
+        self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved() as u32));
+
+        let norm_pos = self.physics.get_normalized_pos();
+        self.fitness_statistics.push(FitnessStatistic::FinalPosition((255.0*norm_pos.0) as u8,
+                                                                     (255.0*norm_pos.1) as u8));
     }
 
     pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx, placement_func: &PlacementFunction)
