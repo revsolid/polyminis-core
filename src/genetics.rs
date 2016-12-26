@@ -1,5 +1,5 @@
 //
-// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE rust_monster
+// LAYERING - THIS IS THE ONLY PLACE ALLOWED TO INCLUDE rust_monster (except for random)
 extern crate rust_monster;
 use self::rust_monster::ga::ga_population::*;
 use self::rust_monster::ga::ga_selectors::*;
@@ -8,16 +8,18 @@ use self::rust_monster::ga::ga_selectors::*;
 pub use self::rust_monster::ga::ga_core::GAIndividual as PolyminiGAIndividual;
 // Alias GA
 pub use self::rust_monster::ga::ga_core::GeneticAlgorithm as PolyminiGA;
-// Alias GARandomCtx
-pub use self::rust_monster::ga::ga_random::GARandomCtx as PolyminiRandomCtx;
 //
 //
 //
+use ::evaluation::*;
+use ::instincts::*;
 use ::uuid::*;
+
+pub use ::random::PolyminiRandomCtx as PolyminiRandomCtx;
 
 use std::any::Any;
 
-// Raw vs Fitness:
+// NOTE: Raw vs Fitness:
 //
 // For every other module we use the Raw score
 // Internally, we use the Fitness Score in the GA as it is scaled using
@@ -25,10 +27,9 @@ use std::any::Any;
 //
 pub type PolyminiPopulationIter<'a, T> = GAPopulationRawIterator<'a, T>;
 
-pub trait Genetics
+pub trait GAContext
 {
-    fn crossover(&self, other: &Self, random_ctx: &mut PolyminiRandomCtx) -> Self;
-    fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx);
+    fn get_random_ctx(&mut self) -> &mut PolyminiRandomCtx;
 }
 
 pub struct PolyminiGeneration<T: PolyminiGAIndividual>
@@ -63,16 +64,22 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
         self.individuals.raw_score_iterator()
     }
 
-    pub fn evaluate(&mut self, ctx: &mut Any)
+    pub fn evaluate(&mut self, evaluators: &Vec<FitnessEvaluator>, instincts: &Vec<Instinct>)
     {
-        self.individuals.evaluate(ctx);
-        self.individuals.sort();
+        for ref mut ind in &mut self.individuals.population().iter_mut()
+        {
+            let mut ctx = PolyminiEvaluationCtx::new_from(evaluators.clone(),
+                                                          PolyminiFitnessAccumulator::new(instincts.clone()));
+            ind.evaluate(&mut ctx);
+        }
+        self.individuals.force_sort();
+        info!("Done Evaluating");
     }
 }
 
 
 // Genetic Algorithm Configuration
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct PGAConfig
 {
     pub max_generations: u32,
@@ -81,20 +88,26 @@ pub struct PGAConfig
     //  Percentage of individuals that pass from generation
     //  to generation
     pub percentage_elitism: f32,
+    pub percentage_mutation: f32,
+
+    // Evaluation Context
+    pub fitness_evaluators: Vec<FitnessEvaluator>,
+
+    // Genome Length
+    pub genome_size: usize,
 
 }
 impl PGAConfig
 {
     pub fn get_new_individuals_per_generation(&self) -> usize
     {
-        (self.percentage_elitism * self.population_size as f32).floor() as usize
+         (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
     }
 }
 
 pub struct PolyminiGeneticAlgorithm<T: PolyminiGAIndividual>
 {
     current_generation: u32,
-    rng_ctx: PolyminiRandomCtx,
     population: PolyminiGeneration<T>,
 
     config: PGAConfig,
@@ -106,10 +119,19 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
         // TODO: Better seeds
         PolyminiGeneticAlgorithm {
                                    current_generation: 0,
-                                   rng_ctx: PolyminiRandomCtx::from_seed([0, 1, 2, uuid as u32], format!("Species {}", uuid)),
                                    population: PolyminiGeneration::new(pop),
                                    config: pgacfg,
                                  }
+    }
+
+    pub fn new_with(pop: Vec<T>, pgacfg: PGAConfig) -> PolyminiGeneticAlgorithm<T>
+    {
+        PolyminiGeneticAlgorithm {
+                                   current_generation: 0,
+                                   population: PolyminiGeneration::new(pop),
+                                   config: pgacfg,
+                                 }
+
     }
     
     pub fn get_population(&self) -> &PolyminiGeneration<T>
@@ -121,23 +143,22 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
     {
         &mut self.population
     }
-}
 
-impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
-{
-    fn population(&mut self) -> &mut GAPopulation<T>
+    pub fn evaluate_population(&mut self)
+    {
+        // TODO: Instincts should come from somehwere else like a config
+        self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic, Instinct::Hoarding, Instinct::Herding, Instinct::Predatory ]);
+    }
+
+    pub fn population(&mut self) -> &mut GAPopulation<T>
     {
         &mut self.population.individuals
     }
 
-    fn initialize_internal(&mut self)
-    {
-    } 
-
-    // Due to the nature of the GA, this step doesn't evaluate nor sorts
+    // Due to the nature of the GA, this step doesn't evaluate
     // it assumes an ordered list of individuals with their fitness set.
-    // This responsibilities are moved to the SimulationEpoch
-    fn  step_internal(&mut self) -> i32
+    // These responsibilities are offloaded to the 'evaluate' method of PolyminiGeneticAlgorithm
+    pub fn step<C: 'static + GAContext>(&mut self, context: &mut C) -> i32
     {
         let mut new_individuals : Vec<T> = vec![];
         let mut roulette_selector = GARouletteWheelSelector::new(self.population.size());
@@ -145,32 +166,39 @@ impl<T: PolyminiGAIndividual> PolyminiGA<T> for PolyminiGeneticAlgorithm<T>
         // Build up new_individuals
         let new_num_individuals =  self.config.get_new_individuals_per_generation();
 
-        for i in 0..new_num_individuals // TODO: Number of new individuals that per generation
+        for i in 0..new_num_individuals
         {
-            let ind_1 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals, &mut self.rng_ctx);
-            let ind_2 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals, &mut self.rng_ctx);
-            new_individuals.push(*ind_1.crossover(ind_2, &mut self.rng_ctx));
+            let ind_1 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals,
+                                                                            &mut context.get_random_ctx());
+            let ind_2 = roulette_selector.select::<GAFitnessScoreSelection>(&self.population.individuals,
+                                                                            &mut context.get_random_ctx());
+
+            let mut new_individual = *ind_1.crossover(ind_2, context);
+            let mut_probability = context.get_random_ctx().gen_range(0.0, 1.0);
+            if (mut_probability < self.config.percentage_mutation)
+            {
+                info!("Mutating Individual");
+                new_individual.mutate(mut_probability, context);
+            }
+            new_individuals.push(new_individual);
         }
 
         // Copy over best individuals from previous gen
         let kept_individuals = self.population.size() - new_num_individuals; 
-        self.population.individuals.population().reverse();
-        for i in 0..kept_individuals // TODO: Number of individuals that pass from generation to the nextone
-        {
-            match self.population.individuals.population().pop()
-            {
-                Some(ind) => { new_individuals.push(ind); }
-                None => { panic!("Error empty population"); }
-            }
-        }
+
+
+        let mut drain = self.population.individuals.drain_best_individuals(kept_individuals, GAPopulationSortBasis::Fitness);
+        new_individuals.append(&mut drain);
 
         self.population.individuals = GAPopulation::new(new_individuals, GAPopulationSortOrder::HighIsBest);
         self.current_generation += 1;
         
+        // TODO: Sort to avoid crashes in the Iterator, fix needed in rust-monster
+        self.population.individuals.sort();
         self.current_generation as i32
     }
 
-    fn done_internal(&mut self) -> bool
+    pub fn done(&mut self) -> bool
     {
         // TODO: Configuration
         self.current_generation >= self.config.max_generations 

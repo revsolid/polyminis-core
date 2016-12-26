@@ -45,4 +45,22 @@ impl fmt::Display for Direction
     }
 }
 
-pub type Coord = (i32, i32);
+pub type Coord = (i8, i8);
+
+pub struct DeathContext
+{
+    step: usize,
+    reason: DeathReason,
+}
+impl DeathContext
+{
+    pub fn new(reason: DeathReason, step: usize) -> DeathContext
+    {
+        DeathContext { reason: reason, step: step }
+    }
+}
+pub enum DeathReason
+{
+    Placement,
+}
+

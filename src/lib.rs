@@ -5,6 +5,8 @@ pub mod control;
 #[allow(dead_code)]
 pub mod environment;
 #[allow(dead_code)]
+pub mod evaluation;
+#[allow(dead_code)]
 pub mod genetics;
 #[allow(dead_code)]
 pub mod instincts;
@@ -15,9 +17,13 @@ pub mod physics;
 #[allow(dead_code)]
 pub mod polymini;
 #[allow(dead_code)]
+pub mod random;
+#[allow(dead_code)]
 pub mod sensors;
 #[allow(dead_code)]
 pub mod serialization;
+#[allow(dead_code)]
+pub mod simulation;
 #[allow(dead_code)]
 pub mod species;
 #[allow(dead_code)]

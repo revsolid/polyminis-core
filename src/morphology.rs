@@ -13,6 +13,32 @@ use ::types::*;
 //
 pub type Chromosome = [u8; 4];
 
+//
+pub struct PolyminiCreationCtx
+{
+    pub trans_table: TranslationTable,
+    pub default_sensors: Vec<Sensor>,
+    pub random_context: PolyminiRandomCtx,
+}
+impl PolyminiCreationCtx
+{
+    pub fn empty() -> PolyminiCreationCtx
+    {
+        PolyminiCreationCtx::new_from(TranslationTable::new(), vec![], PolyminiRandomCtx::new_unseeded("Temporary".to_owned()))
+    }
+    pub fn new_from(tt: TranslationTable, default_sensors: Vec<Sensor>,
+                    rand_ctx: PolyminiRandomCtx) -> PolyminiCreationCtx
+    {
+        PolyminiCreationCtx { trans_table: tt, default_sensors: default_sensors, random_context: rand_ctx }
+    }
+}
+impl GAContext for PolyminiCreationCtx
+{
+    fn get_random_ctx(&mut self) -> &mut PolyminiRandomCtx
+    {
+        &mut self.random_context
+    }
+}
 
 //
 //
@@ -89,22 +115,39 @@ impl Serializable for Cell
 
 //
 //
+// A design note on Translation Table:
+// The translation table is basically a function F(t, n) -> T
+// t being a Tier and N being a number. T being a full on trait.
+// The Tier and the number of the Translation table are INDEPENDENT
+// of the Tier and Number from the Almanac.
+// The former represents within a Species how to translate DNA,
+// the latter is the "Thesaurus" of available DNA combinations.
+//
+// 
 pub struct TranslationTable
 {
     trait_table:  HashMap<(TraitTier, u8), PolyminiTrait>,
-    active:  HashMap<(TraitTier, u8), bool>,
 }
 impl TranslationTable
 {
     pub fn new() -> TranslationTable
     {
-        TranslationTable::new_from(HashMap::new(), HashMap::new())
+        TranslationTable::new_from(&HashMap::new(), &HashSet::new())
     }
 
-    pub fn new_from(trait_table: HashMap<(TraitTier, u8), PolyminiTrait>, 
-                    active:  HashMap<(TraitTier, u8), bool>) -> TranslationTable
+    pub fn new_from(trait_table: &HashMap<(TraitTier, u8), PolyminiTrait>, 
+                    active:  &HashSet<(TraitTier, u8)>) -> TranslationTable
     {
-        TranslationTable { trait_table: trait_table, active: active }
+        // Copy over the active mappings only
+        let mut filtered_table = HashMap::new();
+        for (k,v) in trait_table
+        {
+            if active.contains(k)
+            {
+                filtered_table.insert(*k, *v);
+            }
+        }
+        TranslationTable { trait_table: filtered_table }
     }
     
     fn create_for_chromosome(&self,
@@ -133,7 +176,6 @@ impl TranslationTable
         let mut tier: u8 = 1;
         let mut trait_num = ( ( gp & (0xFF<<8) ) >> 8 ) as u8;
 
-        // Basic Tier Never Chains
         if trait_num == TIER_ONE_TO_TWO_CHAIN
         {
             //TIER II
@@ -149,16 +191,18 @@ impl TranslationTable
 
         // TODO:
         // Get PolyminiTrait
-        let mut polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
-        match self.trait_table.get(&(TraitTier::from(tier), trait_num))
+        let trait_tier = TraitTier::from(tier);
+        let mut polymini_trait;
+        match self.trait_table.get(&(trait_tier, trait_num))
         {
             Some(trait_value) =>
             {
                 polymini_trait = *trait_value;
+                debug!("Morphology::ChromosomeCreate {:?}", polymini_trait);
             }
             None =>
             { 
-               // Value already initialized to a valid default above 
+               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
             }
         }
 
@@ -185,12 +229,12 @@ struct Representation
     cells: Vec<Cell>,
     positions: [HashMap<Coord, usize>; TOTAL_ORIENTATIONS],
     dimensions: (u8, u8),
-    corners: [(i32, i32); TOTAL_ORIENTATIONS],
+    corners: [(i8, i8); TOTAL_ORIENTATIONS],
 }
 impl Representation
 {
     pub fn new(positions: Vec<Coord>, cells: Vec<Cell>,
-               dimensions: (u8, u8), corner: (i32, i32)) -> Representation
+               dimensions: (u8, u8), corner: (i8, i8)) -> Representation
     {
         let mut all_positions : [HashMap<Coord, usize>; TOTAL_ORIENTATIONS] = [HashMap::new(), HashMap::new(),
                                                                                HashMap::new(), HashMap::new()];
@@ -211,8 +255,8 @@ impl Representation
 
         let minx = corner.0;
         let miny = corner.1;
-        let maxx = dimensions.0 as i32 + minx - 1;
-        let maxy = dimensions.1 as i32 + miny - 1;
+        let maxx = dimensions.0 as i8 + minx - 1;
+        let maxy = dimensions.1 as i8 + miny - 1;
 
         corners[0] = (   minx,       miny);
         corners[1] = (   miny,    -1*maxx);
@@ -241,12 +285,21 @@ impl Serializable for Representation
 {
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
-        let mut json_obj = pmJsonObject::new();
+        let mut json_arr = pmJsonArray::new();
         for (coord, inx) in &self.positions[0]
         {
-            json_obj.insert(format!("{:?}", coord), self.cells[*inx].serialize(ctx));
+            //json_obj.insert(format!("{:?}", coord), self.cells[*inx].serialize(ctx));
+            let mut json_obj = pmJsonObject::new();
+            {
+                let mut coord_json = pmJsonObject::new();
+                coord_json.insert("x".to_owned(), coord.0.to_json());
+                coord_json.insert("y".to_owned(), coord.1.to_json());
+                json_obj.insert("Coord".to_owned(), Json::Object(coord_json));
+            }
+            json_obj.insert("Trait".to_owned(), self.cells[*inx].serialize(ctx));
+            json_arr.push(Json::Object(json_obj));
         }
-        Json::Object(json_obj)
+        Json::Array(json_arr)
     }
 }
 impl fmt::Debug for Representation 
@@ -266,7 +319,7 @@ impl fmt::Debug for Representation
             {
                 for j in 0..w 
                 {
-                    let mut trans_coord = (j as i32, i as i32);
+                    let mut trans_coord = (j as i8, i as i8);
                     trans_coord.0 += self.corners[p].0;
                     trans_coord.1 += self.corners[p].1;
 
@@ -318,6 +371,21 @@ impl Morphology
         let rep = Morphology::create_representation(chromosomes, translation_table);
         
         Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
+    }
+
+    pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx, genome_size: usize) -> Morphology
+    {
+        let mut random_chromosomes = vec![];
+
+        for i in 0..genome_size
+        {
+            random_chromosomes.push([ random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>(),
+                                      random_ctx.gen::<u8>() ]);
+        }
+
+        Morphology::new(&random_chromosomes, translation_table)
     }
 
     fn create_representation (chromosomes: &Vec<Chromosome>, translation_table: &TranslationTable) -> Representation
@@ -389,15 +457,15 @@ impl Morphology
         return self.dimensions
     }
 
-    pub fn crossover(&self, other: &Morphology, random_ctx: &mut PolyminiRandomCtx) -> Morphology
+    pub fn crossover(&self, other: &Morphology, creation_ctx: &mut PolyminiCreationCtx) -> Morphology
     {
         let mut chromosomes = vec![];
 
         // TODO: A LOT of magic numbers :S
         // bit to make the cut at
-        let cross_point_chromosome = random_ctx.gen_range(0, self.original_chromosome.len());
-        let cross_point_allele = random_ctx.gen_range(0, 4);
-        let cross_point_bit = random_ctx.gen_range(0, 8);
+        let cross_point_chromosome = creation_ctx.get_random_ctx().gen_range(0, self.original_chromosome.len());
+        let cross_point_allele = creation_ctx.get_random_ctx().gen_range(0, 4);
+        let cross_point_bit = creation_ctx.get_random_ctx().gen_range(0, 8);
 
 
         for i in 0..cross_point_chromosome
@@ -408,6 +476,7 @@ impl Morphology
                                self.original_chromosome[i][3] ])
         }
 
+        debug!("UUU");
         let mut link_chromosome = [0; 4];
 
         for lc in 0..cross_point_allele
@@ -417,24 +486,28 @@ impl Morphology
 
         let link_byte;
 
+        debug!("XXX");
         // make the mask u16 to allow space for overflowing
         let mut mask : u16 = ( 1 << (cross_point_bit+1)) - 1;
         mask = mask << (8 - cross_point_bit);
 
         let mask_2 : u16 = (1 << ((8 - cross_point_bit))) - 1;
 
-        let cross_point_chromosome_2 = random_ctx.gen_range(0, other.original_chromosome.len()); 
+        let cross_point_chromosome_2 = creation_ctx.get_random_ctx().gen_range(0, other.original_chromosome.len()); 
 
         for lc in cross_point_allele..4
         {
-            link_chromosome[lc] = other.original_chromosome[cross_point_chromosome][lc];
+            link_chromosome[lc] = other.original_chromosome[cross_point_chromosome_2][lc];
         }
 
-        println!("{:X} {:X}", mask as u8, mask_2 as u8);
+        //debug!("{:X} {:X}", mask as u8, mask_2 as u8);
+        debug!("XXX");
         link_byte = ((mask as u8) & (self.original_chromosome[cross_point_chromosome][cross_point_allele])) +
                     ((mask_2 as u8) & (other.original_chromosome[cross_point_chromosome_2][cross_point_allele]));
         link_chromosome[cross_point_allele] = link_byte;
         chromosomes.push(link_chromosome);
+
+        debug!("XXX");
 
 
         for j in cross_point_chromosome_2 + 1..other.original_chromosome.len()
@@ -445,21 +518,22 @@ impl Morphology
                                other.original_chromosome[j][3] ])
         }
 
-        println!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit,
-                 cross_point_chromosome_2);
-        println!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome],
+        debug!("{} {} {} {}", cross_point_chromosome, cross_point_allele, cross_point_bit, cross_point_chromosome_2);
+        debug!("{:?} {:?} {:?}", link_chromosome, self.original_chromosome[cross_point_chromosome],
                  other.original_chromosome[cross_point_chromosome_2]);
-        println!("{}", link_byte);
+        debug!("{}", link_byte);
 
-        Morphology::new(&chromosomes, &TranslationTable::new())
+        Morphology::new(&chromosomes, &creation_ctx.trans_table)
     }
 
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)
     {
-        let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
-        let allele_to_mutate = random_ctx.gen_range(0, 4);
-
-        self.original_chromosome[chromosome_to_mutate][allele_to_mutate] = random_ctx.gen::<u8>();
+        for i in 0..random_ctx.gen_range(1, 8)
+        {
+            let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
+            let allele_to_mutate = random_ctx.gen_range(0, 4);
+            self.original_chromosome[chromosome_to_mutate][allele_to_mutate] = random_ctx.gen::<u8>();
+        }
 
         // After mutating the chromosome is possible the whole morphology representation has
         // changed
@@ -509,6 +583,32 @@ impl Morphology
         }
         sensors
     }
+
+    pub fn get_traits_of_type(&self, trait_type: PolyminiTrait) -> Vec<PolyminiTrait>
+    {
+        let mut to_ret = vec![];
+        self.representations.cells.iter().fold(&mut to_ret, |accum, cell|
+        {
+            debug!("Trait Type {:?}", trait_type);
+            debug!("Trait Type (cell) {:?}", cell.pm_trait.pm_trait);
+            if cell.pm_trait.pm_trait == trait_type
+            {
+                accum.push(cell.pm_trait.pm_trait);
+            }
+            accum
+        });
+        to_ret
+    }
+
+    pub fn get_total_cells(&self) -> usize
+    {
+        self.representations.cells.len()
+    }
+
+    pub fn get_corner(&self) -> (i8, i8)
+    {
+        self.representations.corners[0]
+    }
 }
 impl Serializable for Morphology
 {
@@ -516,7 +616,7 @@ impl Serializable for Morphology
     {
         let mut json_obj = pmJsonObject::new();
         
-        json_obj.insert("body".to_string(), self.representations.serialize(ctx));
+        json_obj.insert("Body".to_string(), self.representations.serialize(ctx));
 
 
         let mut json_arr = pmJsonArray::new();
@@ -524,7 +624,7 @@ impl Serializable for Morphology
         {
             json_arr.push(c.to_json());
         }
-        json_obj.insert("chromosome".to_string(), Json::Array(json_arr));
+        json_obj.insert("Chromosome".to_string(), Json::Array(json_arr));
 
         Json::Object(json_obj)
     }
@@ -578,7 +678,7 @@ mod test
         assert_eq!((3, 2), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
         assert_eq!(morph.original_chromosome[1][1], v2);
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
     #[test]
@@ -594,7 +694,7 @@ mod test
         let morph = Morphology::new(&chromosomes, &TranslationTable::new());
         assert_eq!((3, 1), (morph.dimensions.0, morph.dimensions.1));
         assert_eq!(morph.original_chromosome[0][1], v1);
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
     #[test]
@@ -612,9 +712,9 @@ mod test
         let morph = Morphology::new(&c1, &TranslationTable::new());
         let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
-        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
+        let child = morph.crossover(&morph_2, &mut PolyminiCreationCtx::empty()); 
 
-        println!("{:?}", child);
+        debug!("{:?}", child);
     }
 
     #[test]
@@ -632,9 +732,9 @@ mod test
         let morph = Morphology::new(&c1, &TranslationTable::new());
         let morph_2 = Morphology::new(&c2, &TranslationTable::new());
 
-        let child = morph.crossover(&morph_2, &mut PolyminiRandomCtx::from_seed([5,7,5,9], "".to_string())); 
+        let child = morph.crossover(&morph_2, &mut PolyminiCreationCtx::empty()); 
 
-        println!("{:?}", child);
+        debug!("{:?}", child);
     }
 
     #[test]
@@ -650,9 +750,9 @@ mod test
                       [0,    0, 0x00, 0x00]];
 
         let mut morph = Morphology::new(&c1, &TranslationTable::new());
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
         morph.mutate(&mut PolyminiRandomCtx::from_seed([5,7,8,9], "".to_string()), &TranslationTable::new());
-        println!("{:?}", morph);
+        debug!("{:?}", morph);
     }
 
 

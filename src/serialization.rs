@@ -22,7 +22,9 @@ pub mod PolyminiSerializationFlags
 
             const PM_SF_DB      = 0b00000100,
 
-            const PM_SF_DEBUG   = ( PM_SF_STATIC.bits | PM_SF_DYNAMIC.bits | PM_SF_DB.bits ),
+            const PM_SF_STATS   = 0b00001000,
+
+            const PM_SF_DEBUG   = ( PM_SF_STATIC.bits | PM_SF_DYNAMIC.bits | PM_SF_DB.bits | PM_SF_STATS.bits ),
         }
     }
 }
@@ -42,6 +44,11 @@ impl SerializationCtx
     pub fn new_from_flags(flags: SerializationFlags) -> SerializationCtx
     {
         SerializationCtx { flags: flags }
+    }
+    
+    pub fn debug() -> SerializationCtx
+    {
+        SerializationCtx { flags: PM_SF_DEBUG }
     }
 
     pub fn has_flag(&self, flags: SerializationFlags) -> bool

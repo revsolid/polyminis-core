@@ -4,23 +4,36 @@ static GLOBAL_COUNTER: AtomicUsize = ATOMIC_USIZE_INIT;
 
 pub type PUUID = usize;
 
-fn next_global() -> PUUID {
+
+// Note: I stole this from snowflake crate
+// https://crates.io/crates/snowflake
+fn next_global() -> PUUID
+{
     let mut prev = GLOBAL_COUNTER.load(Ordering::Relaxed);
-    loop {
+    loop
+    {
         let old_value = GLOBAL_COUNTER.compare_and_swap(prev, prev + 1, Ordering::Relaxed);
-        if old_value == prev {
+        if old_value == prev
+        {
             return prev;
-        } else {
+        } else
+        {
             prev = old_value;
         }
     }
 }
 
+// TODO: 
+// Expand PUUID from 1 usize to 4 (akin to a GUUID, 2^128 should be enough different IDs for the
+// entirety of the project)
+// Create a differentiation between simulation GUUID and Persistent GUUID
 pub struct PolyminiUUIDCtx;
 impl PolyminiUUIDCtx
 {
     pub fn next() -> PUUID 
     {
-        next_global()
+        let v = next_global();
+        info!("{}", v);
+        v
     }
 }

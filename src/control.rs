@@ -10,7 +10,10 @@ pub use ::actuators::*;
 pub use ::sensors::*;
 
 use ::genetics::*;
+use ::serialization::*;
 use ::types::*;
+
+use std::cmp::{max};
 
 pub struct Perspective
 {
@@ -43,6 +46,7 @@ pub struct Control
 
     //
     inputs: Vec<f32>,
+    hidden: Vec<f32>,
     outputs: Vec<f32>,
 }
 impl Control
@@ -55,11 +59,13 @@ impl Control
                   hidden_layer_size: 0,
                   nn: vec![FeedforwardLayer::new(1, 1, sigmoid())],
                   inputs: vec![],
-                  outputs: vec![]
+                  hidden: vec![],
+                  outputs: vec![],
                 }
     }
 
-    pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize, in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
+    pub fn new_from<T>(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize,
+                       in_to_hid_weight_generator: &mut T, hid_to_out_weight_generator: &mut T) -> Control where T: WeightsGenerator
     {
         let in_len = Sensor::get_total_cardinality(&sensor_list);
         let out_len = actuator_list.len();
@@ -74,7 +80,40 @@ impl Control
           hidden_layer_size: hidden_layer_size,
           nn: vec![in_to_hidden, hidden_to_out],
           inputs: vec![0.0; in_len],
-          outputs: vec![0.0; out_len]
+          hidden: vec![0.0; hidden_layer_size],
+          outputs: vec![0.0; out_len],
+        }
+
+    }
+
+    pub fn new_from_random_ctx(sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>, hidden_layer_size: usize,
+                               rnd_ctx: &mut PolyminiRandomCtx) -> Control
+    {
+        let in_len = Sensor::get_total_cardinality(&sensor_list);
+        let out_len = actuator_list.len();
+
+        let in_to_hidden:  NNLayer =
+        {
+
+            let mut in_to_hid_gen = RandomWeightsGenerator::new(rnd_ctx);
+            FeedforwardLayer::new_from(in_len, hidden_layer_size, sigmoid(), ||(in_to_hid_gen.generate()))
+        };
+
+        let hidden_to_out: NNLayer = 
+        {
+            let mut hid_to_out_gen = RandomWeightsGenerator::new(rnd_ctx);
+            FeedforwardLayer::new_from(hidden_layer_size, out_len, sigmoid(), ||(hid_to_out_gen.generate()))
+        };
+
+        Control
+        {
+          sensor_list: sensor_list,
+          actuator_list: actuator_list,
+          hidden_layer_size: hidden_layer_size,
+          nn: vec![in_to_hidden, hidden_to_out],
+          inputs: vec![0.0; in_len],
+          hidden: vec![0.0; hidden_layer_size],
+          outputs: vec![0.0; out_len],
         }
     }
     
@@ -102,11 +141,18 @@ impl Control
     {
         // Feedforward NN
         let mut ins : Vec<f32> = self.inputs.clone();
-        for ff in &self.nn
-        {
-           ins = ff.compute(&ins);
-        }
-        self.outputs = ins.clone();
+
+        // Move all the values from [0..1] to [-0.5, 0.5]
+        ins = ins.iter().map(|&v| { v - 0.5 }).collect();
+        
+
+        let hid = self.nn[0].compute(&ins);
+        let outs = self.nn[1].compute(&hid);
+
+        self.hidden = hid.clone();
+
+        assert_eq!(outs.len(), self.outputs.len());
+        self.outputs = outs.iter().map(|&v| { v - 0.5 }).collect();
     }
     pub fn get_actions(&self) -> ActionList
     {
@@ -116,22 +162,24 @@ impl Control
         for i in 0..self.actuator_list.len()
         {
             let ref actuator = self.actuator_list[i];
+            if self.outputs.len() == i
+            {
+                error!("{} {}", self.outputs.len(), i);
+                return vec![Action::NoAction]
+            }
+
             action_list.push(actuator.get_action(self.outputs[i]));
         }
-        // TODO: Return this action list
-        action_list;
-
-        // TODO: TOTALLY temporary implementation used to test
-        vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 0.0)),
-             Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))]
+        action_list
     }
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
-
-        let hid_len = self.hidden_layer_size;
+        let hid_len = (self.hidden_layer_size + other.hidden_layer_size) / 2;
         let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);
+        debug!("Crossing In to Hidden Layer - {}", self.nn[0].get_coefficients().len());
         let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_in_size, hid_len);
+        debug!("Crossing Hidden Layer to Out");
         let mut hid_to_out_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[1], &other.nn[1], self.hidden_layer_size, self.outputs.len(), hid_len, new_actuator_list.len());
         
         Control::new_from(new_sensor_list, new_actuator_list, hid_len, &mut in_to_hid_generator, &mut hid_to_out_generator)
@@ -140,8 +188,17 @@ impl Control
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>,
                   new_actuator_list: Vec<Actuator>)
     {
-        //TODO: Mutate Hid layer size (?) 
         
+        let delta_hl: i32 = random_ctx.gen_range(-2, 2);
+
+        let new_hid_size = if (self.hidden_layer_size as i32) + delta_hl >= 1
+        {
+            ((self.hidden_layer_size as i32) + delta_hl) as usize
+        }
+        else
+        {
+            1
+        };
 
         let new_in_size =  Sensor::get_total_cardinality(&new_sensor_list);
         let new_out_size = new_actuator_list.len();
@@ -149,15 +206,17 @@ impl Control
         let old_in_size =  self.inputs.len();
         let old_out_size = self.outputs.len();
         if  new_in_size  != old_in_size ||
-            new_out_size != old_out_size /* Brain Changed */
+            new_out_size != old_out_size ||
+            new_hid_size  != self.hidden_layer_size         /* Brain Changed */
         {
             if new_in_size != old_in_size
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[0],
                                                                  old_in_size, self.hidden_layer_size,
-                                                                 new_in_size, self.hidden_layer_size);
-                self.nn[0] = FeedforwardLayer::new_from(new_in_size, self.hidden_layer_size, sigmoid(),
+                                                                 new_in_size, new_hid_size);
+                self.nn[0] = FeedforwardLayer::new_from(new_in_size, new_hid_size, sigmoid(),
                                                         || (weight_gen.generate()));
+                debug!("{}", self.nn[0].get_coefficients().len());
 
             }
             
@@ -165,11 +224,15 @@ impl Control
             {
                 let mut weight_gen = MutateWeightsGenerator::new(random_ctx,  &self.nn[1],
                                                                  self.hidden_layer_size, old_out_size,
-                                                                 self.hidden_layer_size, new_out_size);
+                                                                 new_hid_size, new_out_size);
 
-                self.nn[1] = FeedforwardLayer::new_from(self.hidden_layer_size, new_out_size, sigmoid(),
+                self.nn[1] = FeedforwardLayer::new_from(new_hid_size, new_out_size, sigmoid(),
                                                         || (weight_gen.generate()));
+                debug!("{}", self.nn[1].get_coefficients().len());
             }
+
+            self.hidden.resize(new_hid_size, 0.0);
+            self.hidden_layer_size = self.hidden.len();
         }
         else  /* Structure of Brain unchanged */
         {
@@ -177,6 +240,10 @@ impl Control
             let layers = self.nn.len();
             let layer_to_mutate = &mut self.nn[random_ctx.gen_range(0, layers)];
 
+            if layer_to_mutate.get_coefficients().len() == 0
+            {
+                return;
+            }
             let mut_bias = random_ctx.test_value(1 / layer_to_mutate.get_coefficients().len());
 
             // Mutate a Weight
@@ -195,9 +262,51 @@ impl Control
                 biases[inx] = random_ctx.gen::<f32>();
                 layer_to_mutate.set_biases(biases);
             }
-        } 
+        }
+        self.inputs.resize(new_in_size, 0.0);
+        self.outputs.resize(new_out_size, 0.0);
+        self.actuator_list = new_actuator_list.clone();
+        self.sensor_list = new_sensor_list.clone();
     }
 }
+impl Serializable for Control
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+       let mut json_obj = pmJsonObject::new();
+       if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) 
+       {
+           // Structure of the Neural Network
+           json_obj.insert("InToHidden".to_owned(), self.nn[0].serialize(ctx));
+           json_obj.insert("HiddenToOutput".to_owned(), self.nn[1].serialize(ctx));
+       }
+       if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+       {
+           // Values firing in the hidden and output layer each step
+           json_obj.insert("Inputs".to_owned(), self.inputs.to_json());
+           json_obj.insert("Hidden".to_owned(), self.hidden.to_json());
+           json_obj.insert("Outputs".to_owned(), self.outputs.to_json());
+       }
+       Json::Object(json_obj)
+    }
+}
+
+
+
+
+impl Serializable for NNLayer
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+       let mut json_arr = pmJsonArray::new();
+       for v in self.get_coefficients()
+       {
+           json_arr.push(v.to_json());
+       }
+       Json::Array(json_arr)
+    }
+}
+
 
 
 pub trait WeightsGenerator
@@ -223,7 +332,7 @@ impl<'a> WeightsGenerator for RandomWeightsGenerator<'a>
 {
     fn generate(&mut self) -> f32
     {
-        self.rand_ctx.gen_range(0.0, 1.0)
+        self.rand_ctx.gen_range(-0.5, 0.5)
     }
 }
 
@@ -247,6 +356,7 @@ impl<'a> MutateWeightsGenerator<'a>
         let mut w_values = vec![];
         let mut nn_inx = 0;
 
+        debug!("Mutation Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
         for i in 0..new_in_size
         {
             for j in 0..new_out_size
@@ -259,7 +369,7 @@ impl<'a> MutateWeightsGenerator<'a>
                 }
                 else
                 {
-                    v = ctx.gen_range(0.0, 1.0);
+                    v = ctx.gen_range(-0.5, 0.5);
                 }
                 w_values.push(v);
             }
@@ -269,7 +379,7 @@ impl<'a> MutateWeightsGenerator<'a>
 
         while b_values.len() < new_out_size
         {
-            b_values.push(ctx.gen_range(0.0, 1.0));
+            b_values.push(ctx.gen_range(-0.5, 0.5));
         }
 
         MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false, weights_generated: 0, max_weights: new_in_size*new_out_size + new_out_size,
@@ -283,7 +393,7 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
         let mut to_ret;
         if self.weights_generated > self.max_weights
         {
-            println!("GENED:{} MAX:{}", self.weights_generated, self.max_weights);
+            error!("GENED:{} MAX:{}", self.weights_generated, self.max_weights);
             panic!("Incorrectly set Generator");
         }
 
@@ -302,11 +412,12 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
         {
             if self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32
             {
-                to_ret = self.rand_ctx.gen_range(0.0, 1.0);
+                to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
                 self.has_mutated = true;
             }
         }
         self.weights_generated += 1;
+        debug!("Mutate Generator - {}", to_ret);
         to_ret 
     }
 }
@@ -330,29 +441,33 @@ impl CrossoverWeightsGenerator
         let mut parent1_inx: usize = 0;
         let mut parent2_inx: usize = 0;
 
+        debug!("Crossover Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
         for i in 0..new_in_size
         {
             for j in 0..new_out_size
             {
                 let v;
-                if i < old_in_size && j < old_out_size
+                if i < old_in_size && j < old_out_size && parent1_inx < l1.get_coefficients().len()
                 {
+                    debug!("{} {} {} {}", i, j, old_in_size, old_out_size);
+                    debug!("{}", l1.get_coefficients().len());
                     v = l1.get_coefficients()[parent1_inx];
                     parent1_inx += 1;
                 }
                 else if parent2_inx < l2.get_coefficients().len()
                 {
+                    debug!("{} {}", parent2_inx, l2.get_coefficients().len());
                     v = l2.get_coefficients()[parent2_inx];
                     parent2_inx += 1;
                 }
                 else
                 {
-                    v = rand_ctx.gen_range(0.0, 1.0);
+                    v = rand_ctx.gen_range(-0.5, 0.5);
                 }
                 w_values.push(v);
             }
         }
-
+        debug!("Outerloop");
         for o in 0..new_out_size
         {
             if o < l1.get_biases().len()
@@ -365,7 +480,7 @@ impl CrossoverWeightsGenerator
             }
             else
             {
-                b_values.push(rand_ctx.gen_range(0.0, 1.0));
+                b_values.push(rand_ctx.gen_range(-0.5, 0.5));
             }
         }
 
