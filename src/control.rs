@@ -116,6 +116,39 @@ impl Control
           outputs: vec![0.0; out_len],
         }
     }
+
+    pub fn new_from_json(json: &Json, sensor_list: Vec<Sensor>, actuator_list: Vec<Actuator>) -> Option<Control>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let mut nn_json = json_obj.get("InToHidden").unwrap();
+                let in_to_hid = FeedforwardLayer::new_from_json(&nn_json, &mut SerializationCtx::new()).unwrap();
+
+                nn_json = json_obj.get("HiddenToOutput").unwrap();
+                let hid_to_out = FeedforwardLayer::new_from_json(&nn_json, &mut SerializationCtx::new()).unwrap();
+                let in_len = json_obj.get("Input").unwrap().as_u64().unwrap() as usize;
+                let hid_len = json_obj.get("Hidden").unwrap().as_u64().unwrap() as usize;
+                let out_len = json_obj.get("Output").unwrap().as_u64().unwrap() as usize;
+                
+                Some(Control
+                    {
+                        sensor_list: sensor_list,
+                        actuator_list: actuator_list,
+                        hidden_layer_size: hid_len,
+                        nn: vec![in_to_hid, hid_to_out],
+                        inputs: vec![0.0; in_len],
+                        hidden: vec![0.0; hid_len],
+                        outputs: vec![0.0; out_len],
+                    })
+            },
+            _ =>
+            {
+                None
+            }
+        }
+    }
     
     pub fn sense(&mut self, sensed: &SensoryPayload)
     {
@@ -277,14 +310,18 @@ impl Serializable for Control
        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) 
        {
            // Structure of the Neural Network
-           json_obj.insert("InToHidden".to_owned(), self.nn[0].serialize(ctx));
+           json_obj.insert("Input".to_owned(),  self.inputs.len().to_json());
+           json_obj.insert("Hidden".to_owned(), self.hidden_layer_size.to_json());
+           json_obj.insert("Output".to_owned(), self.outputs.len().to_json());
+           
+           json_obj.insert("InToHidden".to_owned(),     self.nn[0].serialize(ctx));
            json_obj.insert("HiddenToOutput".to_owned(), self.nn[1].serialize(ctx));
        }
        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
        {
            // Values firing in the hidden and output layer each step
-           json_obj.insert("Inputs".to_owned(), self.inputs.to_json());
-           json_obj.insert("Hidden".to_owned(), self.hidden.to_json());
+           json_obj.insert("Inputs".to_owned(),  self.inputs.to_json());
+           json_obj.insert("Hidden".to_owned(),  self.hidden.to_json());
            json_obj.insert("Outputs".to_owned(), self.outputs.to_json());
        }
        Json::Object(json_obj)
@@ -292,18 +329,67 @@ impl Serializable for Control
 }
 
 
-
-
 impl Serializable for NNLayer
 {
-    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
     {
-       let mut json_arr = pmJsonArray::new();
-       for v in self.get_coefficients()
-       {
-           json_arr.push(v.to_json());
-       }
-       Json::Array(json_arr)
+       let mut json_obj = pmJsonObject::new();
+       json_obj.insert("Inputs".to_owned(), self.input_size().to_json());
+       json_obj.insert("Outputs".to_owned(), self.output_size().to_json());
+       json_obj.insert("Biases".to_owned(), self.get_biases().to_json()); 
+       json_obj.insert("Coefficients".to_owned(), self.get_coefficients().to_json()); 
+       Json::Object(json_obj)
+    }
+}
+impl Deserializable for NNLayer
+{
+    fn new_from_json(json: &Json, _:&mut SerializationCtx) -> Option<NNLayer>
+    {
+        match json
+        {
+            &Json::Object(ref json_obj) =>
+            {
+                let ins = json_obj.get("Inputs").unwrap().as_u64().unwrap() as usize;
+                let outs = json_obj.get("Outputs").unwrap().as_u64().unwrap() as usize;
+                let weights = json_obj.get("Coefficients").unwrap().as_array().unwrap().iter().map(
+                    | x |
+                    {
+                        match *x
+                        {
+                            Json::F64(v) =>
+                            {
+                                v as f32
+                            }
+                            _ =>
+                            {
+                                0.0
+                            }
+                        }
+                    }).collect();
+
+                let biases = json_obj.get("Biases").unwrap().as_array().unwrap().iter().map(
+                    | x |
+                    {
+                        match *x
+                        {
+                            Json::F64(v) =>
+                            {
+                                v as f32
+                            }
+                            _ =>
+                            {
+                                0.0
+                            }
+                        }
+                    }).collect();
+
+                Some(FeedforwardLayer::new_from_values(ins, outs, sigmoid(), weights, biases))
+            }
+            _ =>
+            {
+                None
+            }
+        }
     }
 }
 
@@ -342,21 +428,56 @@ pub struct MutateWeightsGenerator<'a>
 {
     rand_ctx: &'a mut PolyminiRandomCtx,
     has_mutated: bool,
-    weights_generated: usize,
-    max_weights: usize,
-    weight_values: Vec<f32>,
-    bias_values: Vec<f32>
+    internal_generator: UpdateWeightsGenerator,
 }
 impl<'a> MutateWeightsGenerator<'a>
 {
     pub fn new(ctx: &'a mut PolyminiRandomCtx, l1: &NNLayer, old_in_size:usize, old_out_size:usize,
                new_in_size:usize, new_out_size:usize) -> MutateWeightsGenerator<'a>
     {
+        debug!("Mutation Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
+        let uwg = UpdateWeightsGenerator::new(ctx, l1, old_in_size, old_out_size, new_in_size, new_out_size);
+        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false,  internal_generator: uwg }
+    }
+}
+impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
+{
+    fn generate(&mut self) -> f32
+    {
+        let mut to_ret = self.internal_generator.generate();
+        if !self.has_mutated
+        {
+            if self.rand_ctx.gen_range(0.0, 1.0) < 1.0  / (self.internal_generator.bias_values.len() + self.internal_generator.weight_values.len()) as f32
+            {
+                to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
+                self.has_mutated = true;
+            }
+        }
+        debug!("Mutate Generator - {}", to_ret);
+        to_ret 
+    }
+}
+
+//
+//
+pub struct UpdateWeightsGenerator
+{
+    has_mutated: bool,
+    weights_generated: usize,
+    max_weights: usize,
+    weight_values: Vec<f32>,
+    bias_values: Vec<f32>
+}
+impl UpdateWeightsGenerator
+{
+    pub fn new(ctx: &mut PolyminiRandomCtx, l1: &NNLayer, old_in_size:usize, old_out_size:usize,
+               new_in_size:usize, new_out_size:usize) -> UpdateWeightsGenerator
+    {
         let mut b_values;
         let mut w_values = vec![];
         let mut nn_inx = 0;
 
-        debug!("Mutation Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
+        debug!("Update Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
         for i in 0..new_in_size
         {
             for j in 0..new_out_size
@@ -382,11 +503,11 @@ impl<'a> MutateWeightsGenerator<'a>
             b_values.push(ctx.gen_range(-0.5, 0.5));
         }
 
-        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false, weights_generated: 0, max_weights: new_in_size*new_out_size + new_out_size,
+        UpdateWeightsGenerator { has_mutated: false, weights_generated: 0, max_weights: new_in_size*new_out_size + new_out_size,
                                  weight_values: w_values, bias_values: b_values }
     }
 }
-impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
+impl WeightsGenerator for UpdateWeightsGenerator
 {
     fn generate(&mut self) -> f32
     {
@@ -407,20 +528,12 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
             to_ret = self.bias_values[i];
         }
 
-
-        if !self.has_mutated
-        {
-            if self.rand_ctx.gen_range(0.0, 1.0) < 1.0 / (self.bias_values.len() + self.weight_values.len()) as f32
-            {
-                to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
-                self.has_mutated = true;
-            }
-        }
         self.weights_generated += 1;
-        debug!("Mutate Generator - {}", to_ret);
+        debug!("Update Generator - {}", to_ret);
         to_ret 
     }
 }
+
 
 //
 //
@@ -527,6 +640,7 @@ mod test
     use super::*;
 
     use ::genetics::*;
+    use ::serialization::*;
 
     struct FromValuesWeightsGenerator
     {
@@ -790,5 +904,45 @@ mod test
         {
             println!("{}", b);
         }
+    }
+
+    #[test]
+    fn test_serialize_deserialize()
+    {
+        let a_list = vec![ Actuator::new(ActuatorTag::MoveVertical, 0, (0, 0)), Actuator::new(ActuatorTag::MoveVertical, 1, (0, 0)),
+                           Actuator::new(ActuatorTag::MoveVertical, 2, (0, 0))];
+        let mut s_list = vec![ Sensor::new(SensorTag::PositionX, 0), Sensor::new(SensorTag::PositionX, 1),
+                               Sensor::new(SensorTag::PositionX, 2), Sensor::new(SensorTag::PositionX, 3)];
+
+        let mut in_to_hid_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3, 1.4, 1.5,
+                           2.1, 2.2, 2.3, 2.4, 2.5,
+                           3.1, 3.2, 3.3, 3.4, 3.5,
+                           4.1, 4.2, 4.3, 4.4, 4.5],
+            b_values: vec![8.1, 8.2, 8.3, 8.4, 8.5],
+            weights_generated: 0,
+        };
+
+        let mut hid_to_out_generator = FromValuesWeightsGenerator
+        {
+            w_values: vec![1.1, 1.2, 1.3,
+                           2.1, 2.2, 2.3, 
+                           3.1, 3.2, 3.3, 
+                           4.1, 4.2, 4.3, 
+                           5.1, 5.2, 5.3],
+            b_values: vec![8.1, 8.2, 8.3],
+            weights_generated: 0,
+        };
+
+
+        let c1 = Control::new_from(s_list.clone(), a_list.clone(), 5, &mut in_to_hid_generator, &mut hid_to_out_generator);
+
+        let mut ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_STATIC);
+        let json = c1.serialize(&mut ctx);
+        let c2 = Control::new_from_json(&json, s_list.clone(), a_list.clone()).unwrap();
+        let json_2 = c2.serialize(&mut ctx);
+
+        assert_eq!(json.to_string(), json_2.to_string());
     }
 }

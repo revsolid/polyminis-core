@@ -13,6 +13,7 @@ pub use self::rust_monster::ga::ga_core::GeneticAlgorithm as PolyminiGA;
 //
 use ::evaluation::*;
 use ::instincts::*;
+use ::serialization::*;
 use ::uuid::*;
 
 pub use ::random::PolyminiRandomCtx as PolyminiRandomCtx;
@@ -102,6 +103,24 @@ impl PGAConfig
     pub fn get_new_individuals_per_generation(&self) -> usize
     {
          (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
+    }
+}
+//TODO
+impl Serializable for PGAConfig
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        Json::Object(pmJsonObject::new())
+    }
+}
+impl Deserializable for PGAConfig
+{
+    fn new_from_json(_: &Json, _: &mut SerializationCtx) -> Option<PGAConfig> 
+    {
+        Some(PGAConfig { max_generations: 100, population_size: 100,
+                              percentage_elitism: 0.2, fitness_evaluators: vec![],
+                              percentage_mutation: 0.1, genome_size: 8 })
+
     }
 }
 

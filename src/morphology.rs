@@ -373,6 +373,32 @@ impl Morphology
         Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
     }
 
+    pub fn new_from_json(json: &Json, tt: &TranslationTable) -> Option<Morphology>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let mut o_chromosome = vec![];
+                
+                let mut iter = json_obj.get("Chromosome").unwrap().as_array().unwrap().iter();
+                loop 
+                {
+                    let block = [ iter.next().unwrap().as_u64().unwrap() as u8,
+                                  iter.next().unwrap().as_u64().unwrap() as u8,
+                                  iter.next().unwrap().as_u64().unwrap() as u8,
+                                  iter.next().unwrap().as_u64().unwrap() as u8 ];
+                    o_chromosome.push(block);
+                }
+                Some(Morphology::new(&o_chromosome, tt))
+            },
+            _ =>
+            {
+                None
+            }
+        }
+    }
+
     pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx, genome_size: usize) -> Morphology
     {
         let mut random_chromosomes = vec![];

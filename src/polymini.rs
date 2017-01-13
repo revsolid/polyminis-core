@@ -110,6 +110,26 @@ impl Polymini
                    species_weighted_fitness: 0.0 }
 
     }
+
+    pub fn new_from_json(json:&Json, tt: &TranslationTable) -> Option<Polymini>
+    {
+        match *json 
+        {
+            Json::Object(ref json_obj) =>
+            {
+
+                let morph =  Morphology::new_from_json(&json_obj.get("Morphology").unwrap(), tt).unwrap();
+                let control = Control::new_from_json(&json_obj.get("Control").unwrap(), morph.get_sensor_list(),
+                                                     morph.get_actuator_list()).unwrap();
+                Some(Polymini::new_with_control((0.0,0.0), morph, control))
+            },
+            _ =>
+            {
+                None
+            }
+        }
+    }
+
     pub fn get_perspective(&self) -> Perspective
     {
         Perspective::new(self.uuid,

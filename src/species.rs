@@ -76,6 +76,34 @@ impl Species
                 }
     }
 
+    pub fn new_from_json(json: &Json, default_sensors:&Vec<Sensor>, placement_func: Box<PlacementFunction>) -> Option<Species>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) => 
+            {
+                let name = json_obj.get("Name").unwrap().as_string().unwrap().clone().to_string();
+                let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
+                let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), &mut SerializationCtx::new()).unwrap();
+                let pgaconfig = PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new()).unwrap();
+
+                let inds = json_obj.get("Individuals").unwrap().as_array().unwrap().iter().map(
+                    | ind_json |
+                    {
+                        Polymini::new_from_json(ind_json, &translation_table).unwrap()
+                    }
+                ).collect();
+
+
+                Some(Species { name: name,
+                               ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
+                               creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
+                               placement_function: placement_func })
+            },
+            _ => { None }
+        }
+    }
+
     pub fn restart(&mut self)
     {
         for i in 0..self.ga.get_population().size()
@@ -152,6 +180,8 @@ impl Serializable for Species
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
             //Translation Table
+
+            //GA Configuration
         }
 
         let mut pop_arr = pmJsonArray::new();

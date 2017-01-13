@@ -93,10 +93,18 @@ impl Deserializable for ActuatorTag
                 {
                     "hormov" => { to_ret = ActuatorTag::MoveHorizontal; }, 
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
-                    _ => { panic! { "Incorrect value passed - {}", json_string }}
+                    _ =>
+                    {
+                        error!("Incorrect value passed - {}", json_string);
+                        return None;
+                    }
                 }
             },
-            _ => { panic! { "Incorrect type passed - {:?}", json }}
+            _ =>
+            {
+                error!("Incorrect type passed - {:?}", json);
+                return None;
+            }
         }
         Some(to_ret)
     }
