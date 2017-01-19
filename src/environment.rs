@@ -81,6 +81,21 @@ impl Environment
         env
     }
 
+    pub fn new_from_json(json: &Json) -> Option<Environment>
+    {
+        match *json
+        {
+            Json::Object(_) =>
+            {
+                Some(Environment::new(0, vec![]))
+            },
+            _ => 
+            {
+                None
+            }
+        }
+    }
+
     pub fn add_individual(&mut self, polymini: &mut Polymini) -> bool 
     {
         let mut res = false;
@@ -146,6 +161,13 @@ impl Serializable for Environment
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
+        }
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            //
+            let json_arr: pmJsonArray = self.default_sensors.iter().map(|s| { s.tag.serialize(ctx) }).collect();
+            json_obj.insert("DefaultSensors".to_owned(), Json::Array(json_arr));
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)

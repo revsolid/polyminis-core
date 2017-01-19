@@ -7,6 +7,8 @@ use ::species::*;
 use ::types::*;
 use ::uuid::*;
 
+use std::collections::{ HashMap, VecDeque };
+
 // NOTE:
 // Simulation vs Simulation Epoch
 //
@@ -74,6 +76,53 @@ impl SimulationEpoch
     {
         SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4, restarts: 0, restarts_left: 0 }
     }
+
+    pub fn new_from_json(json: &Json, placement_funcs: &mut VecDeque<Box<PlacementFunction>> ) -> Option<SimulationEpoch>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let mut master_translation_table = HashMap::new();
+                /* Fill master table from input data */
+
+                // env
+                let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
+
+                trace!("Creating Species");
+                /* Create species from their input data */
+                let mut species = vec![];
+                for e in json_obj.get("Species").unwrap().as_array().unwrap()
+                {
+                    species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap(),/*_or( some default )*/
+                                 &master_translation_table).unwrap());
+                }
+                
+                // Config
+                let m_s = json_obj.get("MaxSteps").unwrap().as_u64().unwrap() as usize;
+                let r = json_obj.get("Restarts").unwrap().as_u64().unwrap() as usize;
+                let subs = json_obj.get("Substeps").unwrap().as_u64().unwrap() as usize;
+
+                let proportions = json_obj.get("Proportions").unwrap().as_array().unwrap().iter().map( |x| { x.as_f64().unwrap() as f32 }).collect();
+
+                Some(SimulationEpoch { 
+                    environment: env,
+                    species: species,
+                    proportions: proportions,
+                    steps: 0,
+                    substeps: subs,
+                    max_steps: m_s,
+                    restarts: r,
+                    restarts_left: r,
+                })
+            },
+            _ => 
+            {
+                None
+            }
+        }
+    }
+
 
     pub fn new_with(environment: Environment, max_steps: usize) -> SimulationEpoch
     {
@@ -347,7 +396,11 @@ impl Serializable for SimulationEpoch
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            //
+            json_obj.insert("MaxSteps".to_owned(), self.max_steps.to_json());
+            json_obj.insert("Restarts".to_owned(), self.restarts.to_json());
+            json_obj.insert("Substeps".to_owned(), self.substeps.to_json());
+
+            json_obj.insert("Proportions".to_owned(), self.proportions.to_json());
         }
 
         json_obj.insert("Environment".to_owned(), self.environment.serialize(ctx));

@@ -162,8 +162,6 @@ pub enum PolyminiTrait
     PolyminiSimpleTrait(PolyminiSimpleTrait)
 }
 
-
-
 #[cfg(test)]
 mod test
 {

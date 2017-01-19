@@ -110,17 +110,38 @@ impl Serializable for PGAConfig
 {
     fn serialize(&self, _: &mut SerializationCtx) -> Json
     {
-        Json::Object(pmJsonObject::new())
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("MaxGenerations".to_owned(), Json::U64(self.max_generations as u64));
+        json_obj.insert("PopulationSize".to_owned(), Json::U64(self.population_size as u64));
+        json_obj.insert("PercentageElitism".to_owned(), Json::F64(self.percentage_elitism as f64));
+        json_obj.insert("PercentageMutation".to_owned(), Json::F64(self.percentage_mutation as f64));
+        json_obj.insert("GenomeSize".to_owned(), Json::U64(self.genome_size as u64));
+        Json::Object(json_obj)
     }
 }
 impl Deserializable for PGAConfig
 {
-    fn new_from_json(_: &Json, _: &mut SerializationCtx) -> Option<PGAConfig> 
+    fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<PGAConfig> 
     {
-        Some(PGAConfig { max_generations: 100, population_size: 100,
-                              percentage_elitism: 0.2, fitness_evaluators: vec![],
-                              percentage_mutation: 0.1, genome_size: 8 })
-
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                // TODO: Fitness Evaluators
+                let mg = json_obj.get("MaxGenerations").unwrap().as_u64().unwrap() as u32;
+                let ps = json_obj.get("PopulationSize").unwrap().as_u64().unwrap() as u32;
+                let gs = json_obj.get("GenomeSize").unwrap().as_u64().unwrap() as usize;
+                let pe = json_obj.get("PercentageElitism").unwrap().as_f64().unwrap() as f32;
+                let pm = json_obj.get("PercentageMutation").unwrap().as_f64().unwrap() as f32;
+                Some(PGAConfig { max_generations: mg, population_size: ps,
+                                 percentage_elitism: pe, fitness_evaluators: vec![],
+                                 percentage_mutation: pm, genome_size: gs })
+            },
+            _ =>
+            {
+                None
+            }
+        }
     }
 }
 
