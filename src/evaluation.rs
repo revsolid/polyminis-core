@@ -215,6 +215,95 @@ impl FitnessEvaluator
         }
     }
 }
+impl Serializable for FitnessEvaluator
+{
+    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        let w;
+        let id;
+        match *self
+        {
+            FitnessEvaluator::OverallMovement{ weight: weight } => 
+            {
+                w = weight;
+                id = "overallmovement";
+            },
+            FitnessEvaluator::DistanceTravelled{ weight: weight } => 
+            {
+                w = weight;
+                id = "distancetravelled";
+            },
+            FitnessEvaluator::TargetPosition{ weight: weight, pos: pos } =>
+            {
+                w = weight;
+                id = "targetposition";
+
+                let mut pos_json = pmJsonObject::new(); 
+                pos_json.insert("x".to_owned(), pos.0.to_json());
+                pos_json.insert("y".to_owned(), pos.1.to_json());
+
+                json_obj.insert("Position".to_owned(), Json::Object(pos_json));
+            },
+            FitnessEvaluator::PositionsVisited{ weight: weight } => 
+            {
+                id = "positionsvisited";
+                w = weight;
+            },
+            FitnessEvaluator::Shape{ weight: weight } => 
+            {
+                w = weight;
+                id = "shape";
+            },
+            FitnessEvaluator::Alive{ weight: weight } => 
+            {
+                w = weight;
+                id = "alive";
+            },
+        };
+        json_obj.insert("EvaluatorId".to_owned(), id.to_json());
+        json_obj.insert("Weight".to_owned(), w.to_json());
+        Json::Object(json_obj)
+    }
+}
+impl Deserializable for FitnessEvaluator
+{
+    fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<FitnessEvaluator> 
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let w = json_obj.get("Weight").unwrap().as_f64().unwrap() as f32;
+                let fe = match json_obj.get("EvaluatorId").unwrap().as_string().unwrap()
+                {
+                    "overallmovement" => { FitnessEvaluator::OverallMovement{ weight: w }},
+                    "distancetravelled" => { FitnessEvaluator::DistanceTravelled{ weight: w}},
+                    "shape" => { FitnessEvaluator::Shape{ weight: w }},
+                    "positionsvisited" => { FitnessEvaluator::PositionsVisited{ weight: w }},
+
+                    "targetposition" =>
+                    {
+                        let pos_json = json_obj.get("Position").unwrap().as_object().unwrap();
+                        FitnessEvaluator::TargetPosition{ weight: w,
+                                                          pos: (pos_json.get("x").unwrap().as_f64().unwrap() as f32,
+                                                                pos_json.get("y").unwrap().as_f64().unwrap() as f32) }
+
+
+                    },
+                    "alive" => { FitnessEvaluator::Alive{ weight: w }},
+                    _ => { return None }
+                };
+                Some(fe)
+            },
+            _ => 
+            {
+                error!("Incorrect Type Passed for FitnessEvaluator");
+                None
+            }
+        }
+    }
+}
 
 pub struct PolyminiEvaluationCtx
 {

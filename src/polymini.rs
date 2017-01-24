@@ -289,7 +289,10 @@ impl Serializable for Polymini
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("ID".to_owned(), self.get_id().to_json());
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("ID".to_owned(), self.get_id().to_json());
+        }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
@@ -304,9 +307,10 @@ impl Serializable for Polymini
 
         json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
 
-        json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
-
-
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
+        }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
         {

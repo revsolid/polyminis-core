@@ -105,17 +105,28 @@ impl PGAConfig
          (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
     }
 }
-//TODO
 impl Serializable for PGAConfig
 {
-    fn serialize(&self, _: &mut SerializationCtx) -> Json
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("MaxGenerations".to_owned(), Json::U64(self.max_generations as u64));
-        json_obj.insert("PopulationSize".to_owned(), Json::U64(self.population_size as u64));
-        json_obj.insert("PercentageElitism".to_owned(), Json::F64(self.percentage_elitism as f64));
-        json_obj.insert("PercentageMutation".to_owned(), Json::F64(self.percentage_mutation as f64));
-        json_obj.insert("GenomeSize".to_owned(), Json::U64(self.genome_size as u64));
+        json_obj.insert("MaxGenerations".to_owned(), self.max_generations.to_json());
+        json_obj.insert("PopulationSize".to_owned(), self.population_size.to_json());
+        json_obj.insert("PercentageElitism".to_owned(), self.percentage_elitism.to_json());
+        json_obj.insert("PercentageMutation".to_owned(), self.percentage_mutation.to_json());
+        json_obj.insert("GenomeSize".to_owned(), self.genome_size.to_json());
+
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("FitnessEvaluators".to_owned(),
+                            Json::Array(self.fitness_evaluators.iter().map(
+                            {
+                                |fe|
+                                {
+                                    fe.serialize(ctx)  
+                                }
+                            }).collect()));
+        }
         Json::Object(json_obj)
     }
 }
@@ -127,14 +138,28 @@ impl Deserializable for PGAConfig
         {
             Json::Object(ref json_obj) =>
             {
-                // TODO: Fitness Evaluators
                 let mg = json_obj.get("MaxGenerations").unwrap().as_u64().unwrap() as u32;
                 let ps = json_obj.get("PopulationSize").unwrap().as_u64().unwrap() as u32;
                 let gs = json_obj.get("GenomeSize").unwrap().as_u64().unwrap() as usize;
                 let pe = json_obj.get("PercentageElitism").unwrap().as_f64().unwrap() as f32;
                 let pm = json_obj.get("PercentageMutation").unwrap().as_f64().unwrap() as f32;
+                let fe = match json_obj.get("FitnessEvaluators")
+                {
+                    Some(json_arr) =>
+                    {
+                        json_arr.as_array().unwrap().iter().map(
+                        |e|
+                        {
+                            FitnessEvaluator::new_from_json(e, &mut SerializationCtx::new()).unwrap()
+                        }).collect()
+                    }
+                    _ =>
+                    {
+                        vec![]
+                    }
+                };
                 Some(PGAConfig { max_generations: mg, population_size: ps,
-                                 percentage_elitism: pe, fitness_evaluators: vec![],
+                                 percentage_elitism: pe, fitness_evaluators: fe,
                                  percentage_mutation: pm, genome_size: gs })
             },
             _ =>
@@ -172,6 +197,11 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
                                    config: pgacfg,
                                  }
 
+    }
+
+    pub fn get_config(&self) -> &PGAConfig
+    {
+        &self.config
     }
     
     pub fn get_population(&self) -> &PolyminiGeneration<T>
@@ -242,5 +272,34 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
     {
         // TODO: Configuration
         self.current_generation >= self.config.max_generations 
+    }
+}
+
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+    use ::evaluation::*;
+    use ::instincts::*;
+    use ::serialization::*;
+    use ::uuid::*;
+
+    #[test]
+    fn test_pga_serialization()
+    {
+
+        let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 2.5 },
+                               FitnessEvaluator::DistanceTravelled { weight: 2.0 },
+                               FitnessEvaluator::Shape { weight: 5.0 }];
+        let cfg = PGAConfig { max_generations: 99, population_size: 50,
+                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators, genome_size: 8 };
+        let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+                              
+        let json_1 = cfg.serialize(ser_ctx);
+        let cfg_prime = PGAConfig::new_from_json(&json_1, ser_ctx).unwrap();
+        let json_2 = cfg_prime.serialize(ser_ctx);
+
+        assert_eq!(json_1.to_string(), json_2.to_string());
     }
 }

@@ -4,6 +4,7 @@ use ::physics::*;
 use ::polymini::*;
 use ::serialization::*;
 use ::species::*;
+use ::traits::*;
 use ::types::*;
 use ::uuid::*;
 
@@ -27,6 +28,26 @@ impl Simulation
     pub fn new() -> Simulation
     {
         Simulation { current_epoch: SimulationEpoch::new(), epoch_num: 0 }
+    }
+
+    pub fn new_from_json(json: &Json, master_translation_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<Simulation>
+    {
+
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let mut placement_funcs = VecDeque::new();
+                let epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, master_translation_table).unwrap();
+
+                //TODO: Epoch num
+                Some( Simulation { current_epoch: epoch, epoch_num: 0 })
+            },
+            _ =>
+            {
+                None
+            }
+        }
     }
 
     pub fn step(&mut self) -> bool
@@ -59,6 +80,9 @@ impl Simulation
     }
 
 }
+
+
+//
 pub struct SimulationEpoch
 {
     environment: Environment,
@@ -77,15 +101,12 @@ impl SimulationEpoch
         SimulationEpoch { environment: Environment::new(2, vec![]), species: vec![], proportions: vec![], steps: 0, max_steps: 100, substeps: 4, restarts: 0, restarts_left: 0 }
     }
 
-    pub fn new_from_json(json: &Json, placement_funcs: &mut VecDeque<Box<PlacementFunction>> ) -> Option<SimulationEpoch>
+    pub fn new_from_json(json: &Json, placement_funcs: &mut VecDeque<Box<PlacementFunction>>, master_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<SimulationEpoch>
     {
         match *json
         {
             Json::Object(ref json_obj) =>
             {
-                let mut master_translation_table = HashMap::new();
-                /* Fill master table from input data */
-
                 // env
                 let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
 
@@ -94,8 +115,8 @@ impl SimulationEpoch
                 let mut species = vec![];
                 for e in json_obj.get("Species").unwrap().as_array().unwrap()
                 {
-                    species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap(),/*_or( some default )*/
-                                 &master_translation_table).unwrap());
+                    species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap()/*_or( some default )*/,
+                                 master_table).unwrap());
                 }
                 
                 // Config
@@ -183,7 +204,10 @@ impl SimulationEpoch
         }); 
 
         // Proportions
-        self.proportions = self.species.iter().map( | ref species | species.get_accum_score() / total_species_scores as f32 ).collect();
+        if total_species_scores > 0.0
+        {
+            self.proportions = self.species.iter().map( | ref species | species.get_accum_score() / total_species_scores as f32 ).collect();
+        }
 
         let new_prop = 1.0 / self.species.len() as f32;
     }
@@ -426,10 +450,14 @@ mod test
 
     use ::control::*;
     use ::environment::*;
+    use ::genetics::*;
     use ::morphology::*;
+    use ::physics::*;
     use ::polymini::*;
     use ::serialization::*;
     use ::species::*;
+
+    use std::collections::{ HashMap, VecDeque };
 
     #[test]
     fn test_step()
@@ -523,5 +551,46 @@ mod test
         {
             s.step();
         }
+    }
+
+    #[test]
+    fn test_serialize_epoch()
+    {
+        let _ = env_logger::init();
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let chromosomes2 = vec![[0, 0x09, 0x6A, 0xAD],
+                                [0, 0x0B, 0xBE, 0xDA],
+                                [0,    0, 0xBE, 0xEF],
+                                [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new_at((21.0, 20.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((17.0, 20.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
+
+        let mut s = SimulationEpoch::new();
+        s.add_species(Species::new(vec![p1, p2]));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+
+        let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+        let json_1 = s.serialize(&mut ser_ctx);
+
+        let mut funcs: VecDeque<Box<PlacementFunction>> = VecDeque::new();
+        funcs.push_back(Box::new( | ctx: &mut PolyminiRandomCtx |
+                        {
+                            ((ctx.gen_range(0.0, 100.0) as f32).floor(),
+                             (ctx.gen_range(0.0, 100.0) as f32).floor())
+                        }
+                        ));
+        println!("{}", json_1.to_string());
+        let s_prime = SimulationEpoch::new_from_json(&json_1, &mut funcs, &HashMap::new()).unwrap();
+        let json_2 = s_prime.serialize(&mut ser_ctx);
+
+        assert_eq!(json_2.to_string(), json_1.to_string());
+
+
+
     }
 }
