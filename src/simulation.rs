@@ -1,5 +1,6 @@
 use ::control::*;
 use ::environment::*;
+use ::genetics::*;
 use ::physics::*;
 use ::polymini::*;
 use ::serialization::*;
@@ -60,13 +61,19 @@ impl Simulation
                         }
                     });
 
-                let epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
+                let mut epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
                 let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
 
                 json_obj.get("Species").unwrap().as_array().unwrap().iter().map(
                     |species_json|
                     {
-                        epoch.add_species(Species::new_from_json(species_json, &epoch.get_environment().default_sensors).unwrap());
+                        let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
+                                                       Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                       {
+                                                           ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
+                                                             (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                                       }), &master_translation_table).unwrap();
+                        epoch.add_species(s);
                     }
                 );
 
