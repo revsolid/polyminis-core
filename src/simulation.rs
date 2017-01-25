@@ -21,7 +21,7 @@ use std::collections::{ HashMap, VecDeque };
 pub struct Simulation
 {
     current_epoch: SimulationEpoch,
-    epoch_num: usize,
+    pub epoch_num: usize,
 }
 impl Simulation
 {
@@ -30,7 +30,7 @@ impl Simulation
         Simulation { current_epoch: SimulationEpoch::new(), epoch_num: 0 }
     }
 
-    pub fn new_from_json(json: &Json, master_translation_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<Simulation>
+    pub fn new_from_json(json: &Json) -> Option<Simulation>
     {
 
         match *json
@@ -38,10 +38,39 @@ impl Simulation
             Json::Object(ref json_obj) =>
             {
                 let mut placement_funcs = VecDeque::new();
-                let epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, master_translation_table).unwrap();
 
-                //TODO: Epoch num
-                Some( Simulation { current_epoch: epoch, epoch_num: 0 })
+                //NOTE: I don't love this implementation
+                let mut master_translation_table = HashMap::new();//<(TraitTier, u8), PolyminiTrait>();
+                json_obj.get("MasterTranslationTable").unwrap().as_array().unwrap().iter().map(
+                    |entry_json| 
+                    {
+                        match *entry_json
+                        {
+                            Json::Object(ref entry) =>
+                            {
+                                let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+                                let tier = TraitTier::new_from_json(entry.get("Tier").unwrap(), &mut ser_ctx).unwrap(); 
+                                let id = entry.get("TID").unwrap().as_u64().unwrap() as u8; 
+                                master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("Trait").unwrap(), &mut ser_ctx).unwrap());
+                            },
+                            _ => 
+                            {
+                                warn!("Wrong type of JSON object in MasterTranslationTable");
+                            }
+                        }
+                    });
+
+                let epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
+                let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
+
+                json_obj.get("Species").unwrap().as_array().unwrap().iter().map(
+                    |species_json|
+                    {
+                        epoch.add_species(Species::new_from_json(species_json, &epoch.get_environment().default_sensors).unwrap());
+                    }
+                );
+
+                Some( Simulation { current_epoch: epoch, epoch_num: epoch_num as usize })
             },
             _ =>
             {
@@ -113,11 +142,14 @@ impl SimulationEpoch
                 trace!("Creating Species");
                 /* Create species from their input data */
                 let mut species = vec![];
+                // NOTE: species are added afterwards by the owning simulation 
+                /*
                 for e in json_obj.get("Species").unwrap().as_array().unwrap()
                 {
                     species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap()/*_or( some default )*/,
                                  master_table).unwrap());
                 }
+                */
                 
                 // Config
                 let m_s = json_obj.get("MaxSteps").unwrap().as_u64().unwrap() as usize;
@@ -430,13 +462,16 @@ impl Serializable for SimulationEpoch
         json_obj.insert("Environment".to_owned(), self.environment.serialize(ctx));
 
 
-        let mut json_arr = pmJsonArray::new();
-        for s in &self.species
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
-            json_arr.push(s.serialize(ctx));
+            let mut json_arr = pmJsonArray::new();
+            for s in &self.species
+            {
+                json_arr.push(s.serialize(ctx));
+            }
+            json_obj.insert("Species".to_owned(), Json::Array(json_arr));
         }
-        json_obj.insert("Species".to_owned(), Json::Array(json_arr));
-
+       
         Json::Object(json_obj)
     }
 }

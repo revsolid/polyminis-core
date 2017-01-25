@@ -70,7 +70,7 @@ impl Deserializable for SensorTag
                     "gsensor"          => { to_ret = SensorTag::GSensor },
 
                     //Default
-                    _                  => { panic! { "Incorrect value passed - {}", json_string }}
+                    _                  => { return None },
                 }
             },
             _ =>

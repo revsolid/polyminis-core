@@ -95,7 +95,6 @@ impl Deserializable for ActuatorTag
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
                     _ =>
                     {
-                        error!("Incorrect value passed - {}", json_string);
                         return None;
                     }
                 }

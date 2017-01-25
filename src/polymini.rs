@@ -32,7 +32,7 @@ impl Stats
     }
     fn calculate_speed_from(morph: &Morphology) -> usize
     {
-        morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::SpeedTrait)).len()
+        morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(TraitTag::SpeedTrait)).len()
     }
     fn calculate_size_from(morph: &Morphology) -> usize
     {

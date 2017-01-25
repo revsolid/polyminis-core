@@ -253,7 +253,7 @@ impl TranslationTable
             }
             None =>
             { 
-               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
+               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(TraitTag::Empty);
             }
         }
 
