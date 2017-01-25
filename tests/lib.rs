@@ -30,7 +30,7 @@ mod test
 
         let mut master_translation_table = HashMap::new();
 
-        master_translation_table.insert( (TraitTier::TierI, 1), PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::SpeedTrait));
+        master_translation_table.insert( (TraitTier::TierI, 1), PolyminiTrait::PolyminiSimpleTrait(TraitTag::SpeedTrait));
         master_translation_table.insert( (TraitTier::TierI, 3), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveHorizontal));
         master_translation_table.insert( (TraitTier::TierI, 2), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveVertical));
 
