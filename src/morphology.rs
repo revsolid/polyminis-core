@@ -134,13 +134,13 @@ impl Serializable for TTKey
 }
 impl Deserializable for TTKey
 {
-    fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<TTKey>
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<TTKey>
     {
         match *json
         {
             Json::Object(ref json_obj) =>
             {
-                let trait_tier = TraitTier::from(json_obj.get("Tier").unwrap().as_u64().unwrap() as u8);
+                let trait_tier = TraitTier::new_from_json(json_obj.get("Tier").unwrap(), ctx).unwrap();
                 let num = json_obj.get("Number").unwrap().as_u64().unwrap() as u8;
                 Some((trait_tier, num))
             },
@@ -693,8 +693,10 @@ impl Serializable for Morphology
     {
         let mut json_obj = pmJsonObject::new();
         
-        json_obj.insert("Body".to_string(), self.representations.serialize(ctx));
-
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("Body".to_string(), self.representations.serialize(ctx));
+        }
 
         let mut json_arr = pmJsonArray::new();
         for c in &self.original_chromosome

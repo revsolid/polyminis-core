@@ -87,14 +87,11 @@ impl Species
         {
             Json::Object(ref json_obj) => 
             {
-                println!("XXXXX");
                 let name = json_obj.get("Name").unwrap().as_string().unwrap().clone().to_string();
                 let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
                 let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
-                println!("XXXXX");
                 let pgaconfig = PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new()).unwrap();
 
-                println!("XXXXX");
                 let inds = json_obj.get("Individuals").unwrap().as_array().unwrap().iter().map(
                     | ind_json |
                     {

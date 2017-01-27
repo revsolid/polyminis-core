@@ -71,9 +71,9 @@ mod test
         env.add_static_object( (0.0, 99.0),  (100, 1));
 
 
-        let gens_per_epoch = 50;
+        let steps_per_epoch = 50;
 
-        let cfg = PGAConfig { max_generations: gens_per_epoch, population_size: 50,
+        let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 50,
                               percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
 
         trace!("Creating Species");
@@ -87,10 +87,10 @@ mod test
                                    ));
 
         trace!("Adding Species");
-        let mut epoch = SimulationEpoch::new_restartable(env, gens_per_epoch as usize, 1);
+        let mut epoch = SimulationEpoch::new_restartable(env, steps_per_epoch as usize, 1);
         epoch.add_species(ss);
         
-        trace!("Swaping Species:");
+        trace!("Swaping Epoch:");
         sim.swap_epoch(epoch);
 
         trace!("Running Epoch:");
@@ -156,5 +156,77 @@ mod test
         }
 
         sim.get_epoch_mut().dump_species_random_ctx();
+    }
+
+    #[ignore]
+    #[test]
+    fn test_generate_seed_json()
+    {
+        let _ = env_logger::init();
+
+        let mut master_translation_table = HashMap::new();
+
+        master_translation_table.insert( (TraitTier::TierI, 1), PolyminiTrait::PolyminiSimpleTrait(TraitTag::SpeedTrait));
+        master_translation_table.insert( (TraitTier::TierI, 3), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveHorizontal));
+        master_translation_table.insert( (TraitTier::TierI, 2), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveVertical));
+
+        let mut active_table_1 = HashSet::new();
+        active_table_1.insert( (TraitTier::TierI, 3) );
+        active_table_1.insert( (TraitTier::TierI, 2) );
+        active_table_1.insert( (TraitTier::TierI, 1) );
+
+        let mut active_table_2 = HashSet::new();
+        active_table_2.insert( (TraitTier::TierI, 3) );
+        active_table_2.insert( (TraitTier::TierI, 2) );
+        active_table_2.insert( (TraitTier::TierI, 1) );
+
+
+        let default_sensors = vec![ Sensor::new(SensorTag::PositionX, 1),
+                                    Sensor::new(SensorTag::PositionY, 1),
+                                    Sensor::new(SensorTag::Orientation, 1),
+                                    Sensor::new(SensorTag::LastMoveSucceded, 1)];
+
+        let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 2.5 },
+                               FitnessEvaluator::DistanceTravelled { weight: 2.0 },
+                               FitnessEvaluator::Shape { weight: 5.0 },
+                               FitnessEvaluator::Alive { weight: 10.0 },
+                               FitnessEvaluator::PositionsVisited { weight: 0.5 },
+                               FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 1.0) },
+                               FitnessEvaluator::TargetPosition { weight: 15.0, pos: (1.0, 0.0) },
+                               ];
+
+        let translation_table_species_1 = TranslationTable::new_from(&master_translation_table, &active_table_1);
+        let translation_table_species_2 = TranslationTable::new_from(&master_translation_table, &active_table_2);
+
+
+        let mut env = Environment::new(2, default_sensors);
+
+        env.add_static_object( (0.0, 0.0),   (100, 1));
+        env.add_static_object( (0.0, 0.0),   (1, 100));
+        env.add_static_object( (99.0, 0.0),  (1, 100));
+        env.add_static_object( (0.0, 99.0),  (100, 1));
+
+
+        let steps_per_epoch = 50;
+
+        let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 5,
+                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
+
+        trace!("Creating Species");
+        let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,
+                                   &env.default_sensors, cfg,
+                                   Box::new( | ctx: &mut PolyminiRandomCtx |
+                                   {
+                                        ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
+                                          (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                   }
+                                   ));
+
+        trace!("Adding Species");
+        let mut epoch = SimulationEpoch::new_restartable(env, steps_per_epoch as usize, 1);
+
+        let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+        trace!( "{}", epoch.serialize(&mut ser_ctx).to_string());
+        trace!( "{}", ss.serialize(&mut ser_ctx).to_string()); 
     }
 }

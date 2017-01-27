@@ -60,7 +60,7 @@ impl Deserializable for SensorTag
         {
             Json::String(ref json_string) =>
             {
-                match json_string.as_ref()
+                match json_string.to_lowercase().as_str()
                 {
 
                     "positionx"        => { to_ret = SensorTag::PositionX },
