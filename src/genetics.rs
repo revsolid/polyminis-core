@@ -19,6 +19,7 @@ use ::uuid::*;
 pub use ::random::PolyminiRandomCtx as PolyminiRandomCtx;
 
 use std::any::Any;
+use std::collections::HashMap;
 
 // NOTE: Raw vs Fitness:
 //
@@ -94,6 +95,9 @@ pub struct PGAConfig
     // Evaluation Context
     pub fitness_evaluators: Vec<FitnessEvaluator>,
 
+    // Weights for each Instinct
+    pub instinct_weights: HashMap<Instinct, f32>,
+
     // Genome Length
     pub genome_size: usize,
 
@@ -116,6 +120,17 @@ impl Serializable for PGAConfig
         json_obj.insert("PercentageMutation".to_owned(), self.percentage_mutation.to_json());
         json_obj.insert("GenomeSize".to_owned(), self.genome_size.to_json());
 
+        json_obj.insert("InstinctWeights".to_owned(), 
+            Json::Object(
+            {
+                let mut iw_json_obj = pmJsonObject::new();
+                for (k,v) in &self.instinct_weights
+                {
+                    iw_json_obj.insert(k.to_string(), v.to_json());
+                }
+                iw_json_obj
+            }));
+
         if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
             json_obj.insert("FitnessEvaluators".to_owned(),
@@ -132,7 +147,7 @@ impl Serializable for PGAConfig
 }
 impl Deserializable for PGAConfig
 {
-    fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<PGAConfig> 
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<PGAConfig> 
     {
         match *json
         {
@@ -158,9 +173,25 @@ impl Deserializable for PGAConfig
                         vec![]
                     }
                 };
+
+                let iw = HashMap::new();
+
+                match *json_obj.get("InstinctWeights").unwrap()
+                {
+                    Json::Object(ref json_obj) =>
+                    {
+                        for (k,v) in json_obj.iter()
+                        {
+                            let i = Instinct::new_from_json(&k.to_json(), ctx);
+                        }
+                    },
+                    _ =>
+                    {
+                    }
+                }
                 Some(PGAConfig { max_generations: mg, population_size: ps,
                                  percentage_elitism: pe, fitness_evaluators: fe,
-                                 percentage_mutation: pm, genome_size: gs })
+                                 percentage_mutation: pm, genome_size: gs, instinct_weights: iw })
             },
             _ =>
             {
@@ -285,6 +316,8 @@ mod test
     use ::serialization::*;
     use ::uuid::*;
 
+    use std::collections::HashMap;
+
     #[test]
     fn test_pga_serialization()
     {
@@ -293,7 +326,8 @@ mod test
                                FitnessEvaluator::DistanceTravelled { weight: 2.0 },
                                FitnessEvaluator::Shape { weight: 5.0 }];
         let cfg = PGAConfig { max_generations: 99, population_size: 50,
-                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators, genome_size: 8 };
+                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators,
+                              genome_size: 8, instinct_weights: HashMap::new() };
         let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
                               
         let json_1 = cfg.serialize(ser_ctx);

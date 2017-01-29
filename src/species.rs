@@ -28,7 +28,7 @@ impl Species
         // TODO: This configuration should come from somewhere 
         let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
                               percentage_elitism: 0.2, fitness_evaluators: vec![],
-                              percentage_mutation: 0.1, genome_size: 8 };
+                              percentage_mutation: 0.1, genome_size: 8, instinct_weights: HashMap::new() };
 
         //
 

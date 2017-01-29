@@ -74,7 +74,8 @@ mod test
         let steps_per_epoch = 50;
 
         let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 50,
-                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
+                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
+                              genome_size: 8, instinct_weights: HashMap::new() };
 
         trace!("Creating Species");
         let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,
@@ -210,7 +211,8 @@ mod test
         let steps_per_epoch = 50;
 
         let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 5,
-                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, genome_size: 8 };
+                              percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
+                              genome_size: 8, instinct_weights: HashMap::new() };
 
         trace!("Creating Species");
         let ss = Species::new_from("Test Species".to_owned(), translation_table_species_1,

@@ -312,10 +312,14 @@ impl Serializable for Polymini
             json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
         }
 
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS) || 
+           ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB) 
         {
             json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
             json_obj.insert("Raw".to_owned(), self.raw().to_json());
+        }
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
+        {
             json_obj.insert("Stats".to_owned(), self.stats.serialize(ctx));
             //
             let mut stats_json_obj = pmJsonObject::new();
