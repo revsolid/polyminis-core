@@ -41,24 +41,23 @@ impl Simulation
                 let mut placement_funcs = VecDeque::new();
 
                 let mut master_translation_table = HashMap::new();
-                json_obj.get("MasterTranslationTable").unwrap().as_array().unwrap().iter().map(
-                    |entry_json| 
+                for entry_json in json_obj.get("MasterTranslationTable").unwrap().as_array().unwrap().iter()
+                {
+                    match *entry_json
                     {
-                        match *entry_json
+                        Json::Object(ref entry) =>
                         {
-                            Json::Object(ref entry) =>
-                            {
-                                let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
-                                let tier = TraitTier::new_from_json(entry.get("Tier").unwrap(), &mut ser_ctx).unwrap(); 
-                                let id = entry.get("TID").unwrap().as_u64().unwrap() as u8; 
-                                master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("Trait").unwrap(), &mut ser_ctx).unwrap());
-                            },
-                            _ => 
-                            {
-                                warn!("Wrong type of JSON object in MasterTranslationTable");
-                            }
+                            let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+                            let tier = TraitTier::new_from_json(entry.get("Tier").unwrap(), &mut ser_ctx).unwrap(); 
+                            let id = entry.get("TID").unwrap().as_u64().unwrap() as u8; 
+                            master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("Trait").unwrap(), &mut ser_ctx).unwrap());
+                        },
+                        _ => 
+                        {
+                            warn!("Wrong type of JSON object in MasterTranslationTable");
                         }
-                    });
+                    }
+                }
 
                 let mut epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
                 let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
