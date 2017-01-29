@@ -89,7 +89,7 @@ impl Deserializable for ActuatorTag
         {
             Json::String(ref json_string) =>
             {
-                match json_string.as_ref()
+                match json_string.to_lowercase().as_ref()
                 {
                     "hormov" => { to_ret = ActuatorTag::MoveHorizontal; }, 
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
