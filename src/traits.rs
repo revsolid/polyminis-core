@@ -153,6 +153,13 @@ pub enum TraitTag
     Empty,
     SpeedTrait,
 }
+impl Serializable for TraitTag
+{
+    fn serialize(&self, _:&mut SerializationCtx) -> Json
+    {
+        self.to_string().to_json()
+    }
+}
 impl Deserializable for TraitTag
 {
     fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<TraitTag>
@@ -175,6 +182,13 @@ impl Deserializable for TraitTag
                 None
             }
         }
+    }
+}
+impl fmt::Display for TraitTag 
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -203,6 +217,27 @@ impl Deserializable for PolyminiTrait
         else
         {
             Some(PolyminiTrait::PolyminiSimpleTrait(pm_trait.unwrap_or(TraitTag::Empty)))
+        }
+    }
+}
+impl fmt::Display for PolyminiTrait 
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match *self
+        {
+            PolyminiTrait::PolyminiActuator(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
+            PolyminiTrait::PolyminiSensor(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
+            PolyminiTrait::PolyminiSimpleTrait(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
         }
     }
 }

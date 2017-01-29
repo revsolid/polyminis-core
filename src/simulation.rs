@@ -40,8 +40,7 @@ impl Simulation
             {
                 let mut placement_funcs = VecDeque::new();
 
-                //NOTE: I don't love this implementation
-                let mut master_translation_table = HashMap::new();//<(TraitTier, u8), PolyminiTrait>();
+                let mut master_translation_table = HashMap::new();
                 json_obj.get("MasterTranslationTable").unwrap().as_array().unwrap().iter().map(
                     |entry_json| 
                     {
@@ -79,7 +78,6 @@ impl Simulation
             },
             _ =>
             {
-                warn!("Whaaaat!");
                 None
             }
         }

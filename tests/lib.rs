@@ -230,5 +230,17 @@ mod test
         let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
         trace!( "{}", epoch.serialize(&mut ser_ctx).to_string());
         trace!( "{}", ss.serialize(&mut ser_ctx).to_string()); 
+
+        let mut mtt_json = pmJsonArray::new();
+        for ((ttier, nid), pm_trait) in master_translation_table
+        {
+            let mut entry = pmJsonObject::new();
+            entry.insert("Tier".to_owned(), ttier.serialize(&mut ser_ctx)); 
+            entry.insert("TID".to_owned(), nid.to_json()); 
+            entry.insert("Trait".to_owned(), pm_trait.to_string().to_lowercase().to_json());
+            mtt_json.push(Json::Object(entry));
+        }
+
+        trace!("{}", Json::Array(mtt_json).to_string());
     }
 }

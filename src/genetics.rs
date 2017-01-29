@@ -174,7 +174,7 @@ impl Deserializable for PGAConfig
                     }
                 };
 
-                let iw = HashMap::new();
+                let mut iw = HashMap::new();
 
                 match *json_obj.get("InstinctWeights").unwrap()
                 {
@@ -182,7 +182,9 @@ impl Deserializable for PGAConfig
                     {
                         for (k,v) in json_obj.iter()
                         {
-                            let i = Instinct::new_from_json(&k.to_json(), ctx);
+                            // TODO: This 'to_json' is pretty redundant
+                            let i = Instinct::new_from_json(&k.to_json(), ctx).unwrap();
+                            iw.insert(i, v.as_f64().unwrap() as f32);
                         }
                     },
                     _ =>
