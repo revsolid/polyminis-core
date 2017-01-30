@@ -333,6 +333,6 @@ mod test
         let cfg_prime = PGAConfig::new_from_json(&json_1, ser_ctx).unwrap();
         let json_2 = cfg_prime.serialize(ser_ctx);
 
-        assert_eq!(json_1.prety().to_string(), json_2.pretty().to_string());
+        assert_eq!(json_1.pretty().to_string(), json_2.pretty().to_string());
     }
 }
