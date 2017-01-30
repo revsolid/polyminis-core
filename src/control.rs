@@ -943,6 +943,6 @@ mod test
         let c2 = Control::new_from_json(&json, s_list.clone(), a_list.clone()).unwrap();
         let json_2 = c2.serialize(&mut ctx);
 
-        assert_eq!(json.to_string(), json_2.to_string());
+        assert_eq!(json.pretty().to_string(), json_2.pretty().to_string());
     }
 }

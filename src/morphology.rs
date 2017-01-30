@@ -843,6 +843,6 @@ mod test
         let morph_2 = Morphology::new_from_json(&json_1, &TranslationTable::new()).unwrap();
         let json_2 = morph_2.serialize(&mut SerializationCtx::new());
 
-        assert_eq!(json_1.to_string(), json_2.to_string());
+        assert_eq!(json_1.pretty().to_string(), json_2.pretty().to_string());
     }
 }
