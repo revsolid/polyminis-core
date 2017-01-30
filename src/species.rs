@@ -26,7 +26,7 @@ impl Species
         let sp_name = format!("Species {}", id);
 
         // TODO: This configuration should come from somewhere 
-        let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
+        let cfg = PGAConfig { population_size: pop.len() as u32,
                               percentage_elitism: 0.2, fitness_evaluators: vec![],
                               percentage_mutation: 0.1, genome_size: 8, instinct_weights: HashMap::new() };
 
@@ -79,7 +79,7 @@ impl Species
                 }
     }
 
-    pub fn new_from_json(json: &Json, default_sensors:&Vec<Sensor>,
+    pub fn new_from_json(json: &Json, default_sensors: &Vec<Sensor>,
                          placement_func: Box<PlacementFunction>,
                          master_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<Species>
     {
@@ -87,12 +87,12 @@ impl Species
         {
             Json::Object(ref json_obj) => 
             {
-                let name = json_obj.get("Name").unwrap().as_string().unwrap().clone().to_string();
+                let name = json_obj.get("Name").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
                 let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
                 let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
                 let pgaconfig = PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new()).unwrap();
 
-                let inds = json_obj.get("Individuals").unwrap().as_array().unwrap().iter().map(
+                let inds: Vec<Polymini> = json_obj.get("Individuals").unwrap_or(&Json::Array(vec![])).as_array().unwrap().iter().map(
                     | ind_json |
                     {
                         Polymini::new_from_json(ind_json, &translation_table).unwrap()
@@ -100,10 +100,17 @@ impl Species
                 ).collect();
 
 
-                Some(Species { name: name,
-                               ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
-                               creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
-                               placement_function: placement_func })
+                if inds.len() == 0
+                {
+                    Some(Species::new_from(name, translation_table, default_sensors, pgaconfig, placement_func))
+                }
+                else
+                {
+                    Some(Species { name: name,
+                                   ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
+                                   creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
+                                   placement_function: placement_func })
+                }
             },
             _ => { None }
         }

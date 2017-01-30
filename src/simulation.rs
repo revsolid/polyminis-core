@@ -62,17 +62,27 @@ impl Simulation
                 let mut epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
                 let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
 
-                for species_json in json_obj.get("Species").unwrap().as_array().unwrap().iter()
+                match *json_obj.get("Species").unwrap()
                 {
-                    let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
-                                                   Box::new( | ctx: &mut PolyminiRandomCtx |
-                                                   {
-                                                       ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
-                                                         (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                                   }), &master_translation_table).unwrap();
-                    epoch.add_species(s);
+                    Json::Array(ref arr) =>
+                    {
+                        for species_json in arr.iter()
+                        {
+                            let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
+                                                           Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                           {
+                                                               ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
+                                                                 (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                                           }), &master_translation_table).unwrap();
+                            epoch.add_species(s);
+                        }
+                    },
+                    ref v =>
+                    {
+                        error!("Species is set but has the wrong type of value {}", v);
+                    }
                 }
-
+                
                 Some( Simulation { current_epoch: epoch, epoch_num: epoch_num as usize })
             },
             _ =>
@@ -626,7 +636,7 @@ mod test
         let s_prime = SimulationEpoch::new_from_json(&json_1, &mut funcs, &HashMap::new()).unwrap();
         let json_2 = s_prime.serialize(&mut ser_ctx);
 
-        assert_eq!(json_2.to_string(), json_1.to_string());
+        assert_eq!(json_2.pretty().to_string(), json_1.pretty().to_string());
 
 
 

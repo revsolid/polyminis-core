@@ -84,7 +84,6 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
 #[derive(Clone, Debug)]
 pub struct PGAConfig
 {
-    pub max_generations: u32,
     pub population_size: u32,
 
     //  Percentage of individuals that pass from generation
@@ -114,7 +113,6 @@ impl Serializable for PGAConfig
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("MaxGenerations".to_owned(), self.max_generations.to_json());
         json_obj.insert("PopulationSize".to_owned(), self.population_size.to_json());
         json_obj.insert("PercentageElitism".to_owned(), self.percentage_elitism.to_json());
         json_obj.insert("PercentageMutation".to_owned(), self.percentage_mutation.to_json());
@@ -153,7 +151,6 @@ impl Deserializable for PGAConfig
         {
             Json::Object(ref json_obj) =>
             {
-                let mg = json_obj.get("MaxGenerations").unwrap().as_u64().unwrap() as u32;
                 let ps = json_obj.get("PopulationSize").unwrap().as_u64().unwrap() as u32;
                 let gs = json_obj.get("GenomeSize").unwrap().as_u64().unwrap() as usize;
                 let pe = json_obj.get("PercentageElitism").unwrap().as_f64().unwrap() as f32;
@@ -191,7 +188,7 @@ impl Deserializable for PGAConfig
                     {
                     }
                 }
-                Some(PGAConfig { max_generations: mg, population_size: ps,
+                Some(PGAConfig { population_size: ps,
                                  percentage_elitism: pe, fitness_evaluators: fe,
                                  percentage_mutation: pm, genome_size: gs, instinct_weights: iw })
             },
@@ -303,8 +300,8 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
 
     pub fn done(&mut self) -> bool
     {
-        // TODO: Configuration
-        self.current_generation >= self.config.max_generations 
+        // NOTE: 'done' doesn't make sense for our use case, our algorithm is never done
+        false
     }
 }
 
@@ -327,7 +324,7 @@ mod test
         let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 2.5 },
                                FitnessEvaluator::DistanceTravelled { weight: 2.0 },
                                FitnessEvaluator::Shape { weight: 5.0 }];
-        let cfg = PGAConfig { max_generations: 99, population_size: 50,
+        let cfg = PGAConfig { population_size: 50,
                               percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators,
                               genome_size: 8, instinct_weights: HashMap::new() };
         let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);

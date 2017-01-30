@@ -73,7 +73,7 @@ mod test
 
         let steps_per_epoch = 50;
 
-        let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 50,
+        let cfg = PGAConfig { population_size: 50,
                               percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
                               genome_size: 8, instinct_weights: HashMap::new() };
 
@@ -210,7 +210,7 @@ mod test
 
         let steps_per_epoch = 50;
 
-        let cfg = PGAConfig { max_generations: steps_per_epoch, population_size: 5,
+        let cfg = PGAConfig { population_size: 5,
                               percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
                               genome_size: 8, instinct_weights: HashMap::new() };
 
