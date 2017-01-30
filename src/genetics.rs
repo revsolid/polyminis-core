@@ -129,7 +129,7 @@ impl Serializable for PGAConfig
                 iw_json_obj
             }));
 
-        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
             json_obj.insert("FitnessEvaluators".to_owned(),
                             Json::Array(self.fitness_evaluators.iter().map(
