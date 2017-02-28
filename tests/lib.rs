@@ -22,6 +22,7 @@ mod test
     use std::collections::{HashMap, HashSet};
     use std::time::{Duration, Instant};
 
+    #[ignore]
     #[test]
     pub fn main_test()
     {
