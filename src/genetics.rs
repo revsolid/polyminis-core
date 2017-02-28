@@ -13,11 +13,13 @@ pub use self::rust_monster::ga::ga_core::GeneticAlgorithm as PolyminiGA;
 //
 use ::evaluation::*;
 use ::instincts::*;
+use ::serialization::*;
 use ::uuid::*;
 
 pub use ::random::PolyminiRandomCtx as PolyminiRandomCtx;
 
 use std::any::Any;
+use std::collections::HashMap;
 
 // NOTE: Raw vs Fitness:
 //
@@ -82,7 +84,6 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
 #[derive(Clone, Debug)]
 pub struct PGAConfig
 {
-    pub max_generations: u32,
     pub population_size: u32,
 
     //  Percentage of individuals that pass from generation
@@ -93,6 +94,9 @@ pub struct PGAConfig
     // Evaluation Context
     pub fitness_evaluators: Vec<FitnessEvaluator>,
 
+    // Weights for each Instinct
+    pub instinct_weights: HashMap<Instinct, f32>,
+
     // Genome Length
     pub genome_size: usize,
 
@@ -102,6 +106,97 @@ impl PGAConfig
     pub fn get_new_individuals_per_generation(&self) -> usize
     {
          (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
+    }
+}
+impl Serializable for PGAConfig
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("PopulationSize".to_owned(), self.population_size.to_json());
+        json_obj.insert("PercentageElitism".to_owned(), self.percentage_elitism.to_json());
+        json_obj.insert("PercentageMutation".to_owned(), self.percentage_mutation.to_json());
+        json_obj.insert("GenomeSize".to_owned(), self.genome_size.to_json());
+
+        json_obj.insert("InstinctWeights".to_owned(), 
+            Json::Object(
+            {
+                let mut iw_json_obj = pmJsonObject::new();
+                for (k,v) in &self.instinct_weights
+                {
+                    iw_json_obj.insert(k.to_string(), v.to_json());
+                }
+                iw_json_obj
+            }));
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("FitnessEvaluators".to_owned(),
+                            Json::Array(self.fitness_evaluators.iter().map(
+                            {
+                                |fe|
+                                {
+                                    fe.serialize(ctx)  
+                                }
+                            }).collect()));
+        }
+        Json::Object(json_obj)
+    }
+}
+impl Deserializable for PGAConfig
+{
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<PGAConfig> 
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let ps = json_obj.get("PopulationSize").unwrap().as_u64().unwrap() as u32;
+                let gs = json_obj.get("GenomeSize").unwrap().as_u64().unwrap() as usize;
+                let pe = json_obj.get("PercentageElitism").unwrap().as_f64().unwrap() as f32;
+                let pm = json_obj.get("PercentageMutation").unwrap().as_f64().unwrap() as f32;
+                let fe = match json_obj.get("FitnessEvaluators")
+                {
+                    Some(json_arr) =>
+                    {
+                        json_arr.as_array().unwrap().iter().map(
+                        |e|
+                        {
+                            FitnessEvaluator::new_from_json(e, &mut SerializationCtx::new()).unwrap()
+                        }).collect()
+                    }
+                    _ =>
+                    {
+                        vec![]
+                    }
+                };
+
+                let mut iw = HashMap::new();
+
+                match *json_obj.get("InstinctWeights").unwrap()
+                {
+                    Json::Object(ref json_obj) =>
+                    {
+                        for (k,v) in json_obj.iter()
+                        {
+                            // TODO: This 'to_json' is pretty redundant
+                            let i = Instinct::new_from_json(&k.to_json(), ctx).unwrap();
+                            iw.insert(i, v.as_f64().unwrap() as f32);
+                        }
+                    },
+                    _ =>
+                    {
+                    }
+                }
+                Some(PGAConfig { population_size: ps,
+                                 percentage_elitism: pe, fitness_evaluators: fe,
+                                 percentage_mutation: pm, genome_size: gs, instinct_weights: iw })
+            },
+            _ =>
+            {
+                None
+            }
+        }
     }
 }
 
@@ -132,6 +227,11 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
                                    config: pgacfg,
                                  }
 
+    }
+
+    pub fn get_config(&self) -> &PGAConfig
+    {
+        &self.config
     }
     
     pub fn get_population(&self) -> &PolyminiGeneration<T>
@@ -200,7 +300,39 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
 
     pub fn done(&mut self) -> bool
     {
-        // TODO: Configuration
-        self.current_generation >= self.config.max_generations 
+        // NOTE: 'done' doesn't make sense for our use case, our algorithm is never done
+        false
+    }
+}
+
+
+#[cfg(test)]
+mod test
+{
+    use super::*;
+    use ::evaluation::*;
+    use ::instincts::*;
+    use ::serialization::*;
+    use ::uuid::*;
+
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_pga_serialization()
+    {
+
+        let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 2.5 },
+                               FitnessEvaluator::DistanceTravelled { weight: 2.0 },
+                               FitnessEvaluator::Shape { weight: 5.0 }];
+        let cfg = PGAConfig { population_size: 50,
+                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators,
+                              genome_size: 8, instinct_weights: HashMap::new() };
+        let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
+                              
+        let json_1 = cfg.serialize(ser_ctx);
+        let cfg_prime = PGAConfig::new_from_json(&json_1, ser_ctx).unwrap();
+        let json_2 = cfg_prime.serialize(ser_ctx);
+
+        assert_eq!(json_1.pretty().to_string(), json_2.pretty().to_string());
     }
 }

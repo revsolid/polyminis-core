@@ -7,6 +7,9 @@ use ::polymini::*;
 use ::physics::*;
 use ::serialization::*;
 use ::uuid::*;
+use ::traits::*;
+
+use std::collections::HashMap;
 
 pub struct Species
 {
@@ -23,9 +26,9 @@ impl Species
         let sp_name = format!("Species {}", id);
 
         // TODO: This configuration should come from somewhere 
-        let cfg = PGAConfig { max_generations: 100, population_size: pop.len() as u32,
+        let cfg = PGAConfig { population_size: pop.len() as u32,
                               percentage_elitism: 0.2, fitness_evaluators: vec![],
-                              percentage_mutation: 0.1, genome_size: 8 };
+                              percentage_mutation: 0.1, genome_size: 8, instinct_weights: HashMap::new() };
 
         //
 
@@ -74,6 +77,43 @@ impl Species
                   creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
                   placement_function: placement_func,
                 }
+    }
+
+    pub fn new_from_json(json: &Json, default_sensors: &Vec<Sensor>,
+                         placement_func: Box<PlacementFunction>,
+                         master_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<Species>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) => 
+            {
+                let name = json_obj.get("Name").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
+                let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
+                let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
+                let pgaconfig = PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new()).unwrap();
+
+                let inds: Vec<Polymini> = json_obj.get("Individuals").unwrap_or(&Json::Array(vec![])).as_array().unwrap().iter().map(
+                    | ind_json |
+                    {
+                        Polymini::new_from_json(ind_json, &translation_table).unwrap()
+                    }
+                ).collect();
+
+
+                if inds.len() == 0
+                {
+                    Some(Species::new_from(name, translation_table, default_sensors, pgaconfig, placement_func))
+                }
+                else
+                {
+                    Some(Species { name: name,
+                                   ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
+                                   creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
+                                   placement_function: placement_func })
+                }
+            },
+            _ => { None }
+        }
     }
 
     pub fn restart(&mut self)
@@ -151,7 +191,8 @@ impl Serializable for Species
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
-            //Translation Table
+            json_obj.insert("TranslationTable".to_string(), self.creation_context.trans_table.serialize(ctx));
+            json_obj.insert("GAConfiguration".to_string(), self.ga.get_config().serialize(ctx));
         }
 
         let mut pop_arr = pmJsonArray::new();

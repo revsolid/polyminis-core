@@ -89,14 +89,21 @@ impl Deserializable for ActuatorTag
         {
             Json::String(ref json_string) =>
             {
-                match json_string.as_ref()
+                match json_string.to_lowercase().as_ref()
                 {
                     "hormov" => { to_ret = ActuatorTag::MoveHorizontal; }, 
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
-                    _ => { panic! { "Incorrect value passed - {}", json_string }}
+                    _ =>
+                    {
+                        return None;
+                    }
                 }
             },
-            _ => { panic! { "Incorrect type passed - {:?}", json }}
+            _ =>
+            {
+                error!("Incorrect type passed - {:?}", json);
+                return None;
+            }
         }
         Some(to_ret)
     }

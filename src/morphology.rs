@@ -118,15 +118,44 @@ impl Serializable for Cell
 // A design note on Translation Table:
 // The translation table is basically a function F(t, n) -> T
 // t being a Tier and N being a number. T being a full on trait.
-// The Tier and the number of the Translation table are INDEPENDENT
-// of the Tier and Number from the Almanac.
-// The former represents within a Species how to translate DNA,
-// the latter is the "Thesaurus" of available DNA combinations.
 //
 // 
+pub type  TTKey = (TraitTier, u8);
+impl Serializable for TTKey
+{
+    fn serialize(&self, ctx:&mut SerializationCtx) -> Json
+    {
+        let (t, n) = *self;
+        let mut json_obj = pmJsonObject::new();
+        json_obj.insert("Tier".to_owned(), t.serialize(ctx));
+        json_obj.insert("Number".to_owned(), n.to_json());
+        Json::Object(json_obj)
+    }
+}
+impl Deserializable for TTKey
+{
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<TTKey>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let trait_tier = TraitTier::new_from_json(json_obj.get("Tier").unwrap(), ctx).unwrap();
+                let num = json_obj.get("Number").unwrap().as_u64().unwrap() as u8;
+                Some((trait_tier, num))
+            },
+            _ => 
+            {
+                error!("Wrong Json type for TTKey Desrialization");
+                None
+            }
+        }
+    }
+}
+
 pub struct TranslationTable
 {
-    trait_table:  HashMap<(TraitTier, u8), PolyminiTrait>,
+    trait_table:  HashMap<TTKey, PolyminiTrait>,
 }
 impl TranslationTable
 {
@@ -135,8 +164,8 @@ impl TranslationTable
         TranslationTable::new_from(&HashMap::new(), &HashSet::new())
     }
 
-    pub fn new_from(trait_table: &HashMap<(TraitTier, u8), PolyminiTrait>, 
-                    active:  &HashSet<(TraitTier, u8)>) -> TranslationTable
+    pub fn new_from(trait_table: &HashMap<TTKey, PolyminiTrait>, 
+                    active:  &HashSet<TTKey>) -> TranslationTable
     {
         // Copy over the active mappings only
         let mut filtered_table = HashMap::new();
@@ -148,6 +177,28 @@ impl TranslationTable
             }
         }
         TranslationTable { trait_table: filtered_table }
+    }
+
+    pub fn new_from_json(json: &Json, trait_table: &HashMap<TTKey, PolyminiTrait>) -> Option<TranslationTable>
+    {
+        match *json
+        {
+            Json::Array(ref json_arr) =>
+            {
+                let mut active = HashSet::new();
+                for elem in json_arr
+                {
+                    let tt_key = TTKey::new_from_json(elem, &mut SerializationCtx::new()).unwrap();
+                    active.insert(tt_key);
+                }
+                Some(TranslationTable::new_from(trait_table, &active))
+            },
+            _ =>
+            {
+                error!("Translation Table fed wrong Json - {}", json.to_string());
+                None
+            }
+        }
     }
     
     fn create_for_chromosome(&self,
@@ -202,7 +253,7 @@ impl TranslationTable
             }
             None =>
             { 
-               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty);
+               polymini_trait = PolyminiTrait::PolyminiSimpleTrait(TraitTag::Empty);
             }
         }
 
@@ -210,17 +261,20 @@ impl TranslationTable
                   Trait::new(TraitTier::from(tier), trait_num, polymini_trait))
     }
 }
-impl Deserializable for TranslationTable
+impl Serializable for TranslationTable
 {
-    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<TranslationTable>
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
-        // Translation Table isn't anything but a layer to go from 
-        Some(TranslationTable::new())
+        let mut json_arr = pmJsonArray::new();
+
+        for (k, v) in &self.trait_table
+        {
+            json_arr.push(k.serialize(ctx));
+        }
+
+        Json::Array(json_arr)
     }
 }
-
-
-//
 //
 // Positions - Maps a Coordinate to a position in the Cell list
 const TOTAL_ORIENTATIONS: usize = 4; 
@@ -373,6 +427,35 @@ impl Morphology
         Morphology { dimensions: rep.dimensions, representations: rep, original_chromosome: original_chromosome }
     }
 
+    pub fn new_from_json(json: &Json, tt: &TranslationTable) -> Option<Morphology>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let mut o_chromosome = vec![];
+                
+                let mut arr = json_obj.get("Chromosome").unwrap().as_array().unwrap();
+                let mut iter = arr.iter();
+                for e in arr
+                {
+                    let block = e.as_array().unwrap();
+                    o_chromosome.push([
+                        block[0].as_u64().unwrap() as u8,
+                        block[1].as_u64().unwrap() as u8,
+                        block[2].as_u64().unwrap() as u8,
+                        block[3].as_u64().unwrap() as u8,
+                    ]);
+                }
+                Some(Morphology::new(&o_chromosome, tt))
+            },
+            _ =>
+            {
+                None
+            }
+        }
+    }
+
     pub fn new_random(translation_table: &TranslationTable, random_ctx: &mut PolyminiRandomCtx, genome_size: usize) -> Morphology
     {
         let mut random_chromosomes = vec![];
@@ -476,7 +559,6 @@ impl Morphology
                                self.original_chromosome[i][3] ])
         }
 
-        debug!("UUU");
         let mut link_chromosome = [0; 4];
 
         for lc in 0..cross_point_allele
@@ -486,7 +568,6 @@ impl Morphology
 
         let link_byte;
 
-        debug!("XXX");
         // make the mask u16 to allow space for overflowing
         let mut mask : u16 = ( 1 << (cross_point_bit+1)) - 1;
         mask = mask << (8 - cross_point_bit);
@@ -500,15 +581,11 @@ impl Morphology
             link_chromosome[lc] = other.original_chromosome[cross_point_chromosome_2][lc];
         }
 
-        //debug!("{:X} {:X}", mask as u8, mask_2 as u8);
-        debug!("XXX");
+        debug!("{:X} {:X}", mask as u8, mask_2 as u8);
         link_byte = ((mask as u8) & (self.original_chromosome[cross_point_chromosome][cross_point_allele])) +
                     ((mask_2 as u8) & (other.original_chromosome[cross_point_chromosome_2][cross_point_allele]));
         link_chromosome[cross_point_allele] = link_byte;
         chromosomes.push(link_chromosome);
-
-        debug!("XXX");
-
 
         for j in cross_point_chromosome_2 + 1..other.original_chromosome.len()
         {
@@ -616,8 +693,10 @@ impl Serializable for Morphology
     {
         let mut json_obj = pmJsonObject::new();
         
-        json_obj.insert("Body".to_string(), self.representations.serialize(ctx));
-
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("Body".to_string(), self.representations.serialize(ctx));
+        }
 
         let mut json_arr = pmJsonArray::new();
         for c in &self.original_chromosome
@@ -637,6 +716,7 @@ mod test
 {
     use ::genetics::*;
     use ::morphology::*;
+    use ::serialization::*;
     use ::types::*;
     #[test]
     fn test_adjacency_vertical()
@@ -751,9 +831,21 @@ mod test
 
         let mut morph = Morphology::new(&c1, &TranslationTable::new());
         debug!("{:?}", morph);
-        morph.mutate(&mut PolyminiRandomCtx::from_seed([5,7,8,9], "".to_string()), &TranslationTable::new());
+        morph.mutate(&mut PolyminiRandomCtx::from_seed([5,7,8,9], "Test Mutate".to_owned()), &TranslationTable::new());
         debug!("{:?}", morph);
     }
 
+    // TODO: It is fucking dumb, that serializing the same object yields using pretty() yields
+    // different results (out of order fields), there's no simple way of testing this then
+    #[ignore]
+    #[test]
+    fn test_morphology_serialization()
+    {
+        let mut morph = Morphology::new_random(&TranslationTable::new(), &mut PolyminiRandomCtx::new_unseeded("Test Serialization".to_owned()),8);
+        let json_1 = morph.serialize(&mut SerializationCtx::new());
+        let morph_2 = Morphology::new_from_json(&json_1, &TranslationTable::new()).unwrap();
+        let json_2 = morph_2.serialize(&mut SerializationCtx::new());
 
+        assert_eq!(json_1.pretty().to_string(), json_2.pretty().to_string());
+    }
 }

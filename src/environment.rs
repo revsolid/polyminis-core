@@ -81,6 +81,40 @@ impl Environment
         env
     }
 
+    pub fn new_from_json(json: &Json) -> Option<Environment>
+    {
+        match *json
+        {
+            Json::Object(ref json_obj) =>
+            {
+                let default_sensors = json_obj.get("DefaultSensors").unwrap().as_array().unwrap().iter().map( 
+                |s_tag|
+                {
+                    Sensor::new(SensorTag::new_from_json(s_tag, &mut SerializationCtx::new()).unwrap(), 0)
+                }).collect();
+
+                let dims =  {
+                    let d = json_obj.get("Dimensions").unwrap().as_object().unwrap();
+                    (d.get("x").unwrap().as_f64().unwrap() as f32,
+                     d.get("y").unwrap().as_f64().unwrap() as f32)
+                };
+
+
+                Some(Environment {
+                        dimensions: dims,
+                        physical_world: PhysicsWorld::new(),
+                        default_sensors: default_sensors,
+                        species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
+                        objects: vec![],
+                    })
+            },
+            _ => 
+            {
+                None
+            }
+        }
+    }
+
     pub fn add_individual(&mut self, polymini: &mut Polymini) -> bool 
     {
         let mut res = false;
@@ -148,11 +182,27 @@ impl Serializable for Environment
         {
         }
 
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            //
+            let json_arr: pmJsonArray = self.default_sensors.iter().map(|s| { s.tag.serialize(ctx) }).collect();
+            json_obj.insert("DefaultSensors".to_owned(), Json::Array(json_arr));
+
+            //
+            let mut dimensions_json = pmJsonObject::new();
+            dimensions_json.insert("x".to_owned(), self.dimensions.0.to_json());
+            dimensions_json.insert("y".to_owned(), self.dimensions.1.to_json());
+            json_obj.insert("Dimensions".to_owned(), Json::Object(dimensions_json));
+
+            //
+            json_obj.insert("SpeciesSlots".to_owned(), self.species_slots.to_json());
+        }
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) &&
+          !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
             //
             json_obj.insert("PhysicsWorld".to_owned(), self.physical_world.serialize(ctx));
-            
         }
         Json::Object(json_obj)
     }

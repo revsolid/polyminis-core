@@ -32,7 +32,7 @@ impl Stats
     }
     fn calculate_speed_from(morph: &Morphology) -> usize
     {
-        morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::SpeedTrait)).len()
+        morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(TraitTag::SpeedTrait)).len()
     }
     fn calculate_size_from(morph: &Morphology) -> usize
     {
@@ -110,6 +110,26 @@ impl Polymini
                    species_weighted_fitness: 0.0 }
 
     }
+
+    pub fn new_from_json(json:&Json, tt: &TranslationTable) -> Option<Polymini>
+    {
+        match *json 
+        {
+            Json::Object(ref json_obj) =>
+            {
+
+                let morph =  Morphology::new_from_json(&json_obj.get("Morphology").unwrap(), tt).unwrap();
+                let control = Control::new_from_json(&json_obj.get("Control").unwrap(), morph.get_sensor_list(),
+                                                     morph.get_actuator_list()).unwrap();
+                Some(Polymini::new_with_control((0.0,0.0), morph, control))
+            },
+            _ =>
+            {
+                None
+            }
+        }
+    }
+
     pub fn get_perspective(&self) -> Perspective
     {
         Perspective::new(self.uuid,
@@ -269,7 +289,10 @@ impl Serializable for Polymini
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("ID".to_owned(), self.get_id().to_json());
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("ID".to_owned(), self.get_id().to_json());
+        }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
@@ -284,14 +307,19 @@ impl Serializable for Polymini
 
         json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
 
-        json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        {
+            json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
+        }
 
-
-
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS) || 
+           ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB) 
         {
             json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
             json_obj.insert("Raw".to_owned(), self.raw().to_json());
+        }
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
+        {
             json_obj.insert("Stats".to_owned(), self.stats.serialize(ctx));
             //
             let mut stats_json_obj = pmJsonObject::new();

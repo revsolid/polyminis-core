@@ -122,7 +122,7 @@ impl Deserializable for Trait
 
         let json_obj = json.as_object().unwrap();
 
-        match json_obj.get(&"Tier".to_string()) 
+        match json_obj.get("Tier") 
         {
             Some(tier) =>
             {
@@ -131,27 +131,65 @@ impl Deserializable for Trait
             None => { return None }
         }
 
-        match json_obj.get(&"TID".to_string()) 
+        match json_obj.get("TID")
         {
             Some(num) =>
             {
-                // Let it panic if something that is supposed to be a number isn't
-                trait_number = num.as_u64().unwrap() as u8;
+                trait_number = num.as_u64().unwrap_or(0) as u8;
             },
             None => { return None }
         }
 
         Some(Trait::new(trait_tier, trait_number,
-             PolyminiTrait::PolyminiSimpleTrait(PolyminiSimpleTrait::Empty)))
+                            PolyminiTrait::new_from_json(json_obj.get("Trait").unwrap(), ctx)
+                            .unwrap_or(PolyminiTrait::PolyminiSimpleTrait(TraitTag::Empty))))
     }
 }
 
 //
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub enum PolyminiSimpleTrait
+pub enum TraitTag
 {
     Empty,
     SpeedTrait,
+}
+impl Serializable for TraitTag
+{
+    fn serialize(&self, _:&mut SerializationCtx) -> Json
+    {
+        self.to_string().to_json()
+    }
+}
+impl Deserializable for TraitTag
+{
+    fn new_from_json(json: &Json, _: &mut SerializationCtx) -> Option<TraitTag>
+    {
+        match *json
+        {
+            Json::String(ref json_string) =>
+            {
+                match json_string.as_ref()
+                {
+                    "speedtrait" => { Some(TraitTag::SpeedTrait) },
+                    _ =>
+                    {
+                        None
+                    }
+                }
+            }
+            _ =>
+            {
+                None
+            }
+        }
+    }
+}
+impl fmt::Display for TraitTag 
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        fmt::Debug::fmt(self, f)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -159,10 +197,50 @@ pub enum PolyminiTrait
 {
     PolyminiActuator(ActuatorTag),
     PolyminiSensor(SensorTag),
-    PolyminiSimpleTrait(PolyminiSimpleTrait)
+    PolyminiSimpleTrait(TraitTag)
 }
-
-
+impl Deserializable for PolyminiTrait
+{
+    fn new_from_json(json: &Json, ctx:&mut SerializationCtx) -> Option<PolyminiTrait>
+    {
+        let actuator  = ActuatorTag::new_from_json(json, ctx);
+        let sensor    = SensorTag::new_from_json(json, ctx);
+        let pm_trait  = TraitTag::new_from_json(json, ctx);
+        if actuator.is_some()
+        {
+            Some(PolyminiTrait::PolyminiActuator(actuator.unwrap()))
+        }
+        else if sensor.is_some()
+        {
+            Some(PolyminiTrait::PolyminiSensor(sensor.unwrap()))
+        }
+        else
+        {
+            Some(PolyminiTrait::PolyminiSimpleTrait(pm_trait.unwrap_or(TraitTag::Empty)))
+        }
+    }
+}
+impl fmt::Display for PolyminiTrait 
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match *self
+        {
+            PolyminiTrait::PolyminiActuator(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
+            PolyminiTrait::PolyminiSensor(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
+            PolyminiTrait::PolyminiSimpleTrait(tag) =>
+            {
+                fmt::Debug::fmt(&tag, f)
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod test
@@ -192,9 +270,9 @@ mod test
     }
 
     // #[test]
-    // test_trait_deserialize() ?
+    // test_trait_serialize() ?
     // If the previous test and the next tess pass there's no extra coverage
-    // provided by a deserialize only test
+    // provided by a serialize only test
 
     #[test]
     fn test_trait_serialize_deserialize()

@@ -60,10 +60,17 @@ impl Deserializable for SensorTag
         {
             Json::String(ref json_string) =>
             {
-                match json_string.as_ref()
+                match json_string.to_lowercase().as_str()
                 {
-                    "gsensor" => { to_ret = SensorTag::GSensor },
-                    _ => { panic! { "Incorrect value passed - {}", json_string }}
+
+                    "positionx"        => { to_ret = SensorTag::PositionX },
+                    "positiony"        => { to_ret = SensorTag::PositionY },
+                    "orientation"      => { to_ret = SensorTag::Orientation },
+                    "lastmovesucceded" => { to_ret = SensorTag::LastMoveSucceded },
+                    "gsensor"          => { to_ret = SensorTag::GSensor },
+
+                    //Default
+                    _                  => { return None },
                 }
             },
             _ =>
