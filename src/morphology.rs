@@ -835,6 +835,9 @@ mod test
         debug!("{:?}", morph);
     }
 
+    // TODO: It is fucking dumb, that serializing the same object yields using pretty() yields
+    // different results (out of order fields), there's no simple way of testing this then
+    #[ignored]
     #[test]
     fn test_morphology_serialization()
     {
