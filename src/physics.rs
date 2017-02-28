@@ -581,10 +581,11 @@ impl PhysicsWorld
         }
     }
 
-    pub fn remove(&mut self, physics: &Physics)
+    pub fn remove(&mut self, physics: &Physics) -> bool
     {
         self.world.deferred_remove(physics.uuid);
         self.world.update();
+        true
     }
 
     pub fn apply(&mut self, id: usize, action: Action)

@@ -448,6 +448,52 @@ impl SimulationEpoch
         // the sensory payload
         sp
     }
+
+    fn solo_run(&mut self)
+    {
+        for s in 0..self.species.len()
+        {
+            for i in 0..self.species[s].get_generation().size()
+            {
+                // Reset the World 
+                self.environment = self.environment.restart();
+
+                // Add Polymini to the World
+                {
+                    let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                    self.environment.add_individual(polymini);
+                }
+
+                for _ in 0..self.max_steps
+                {
+                    for ss in 0..self.substeps
+                    {
+                        let perspective;
+                        {
+                            let polymini = self.species[s].get_generation().get_individual(i);
+                            perspective = polymini.get_perspective();
+                        }
+            
+                        let sensed = self.sense_for(&perspective);
+                        let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
+                        p.sense_phase(&sensed);
+                        p.act_phase(ss, &mut self.environment.physical_world);
+                        self.environment.physical_world.step();
+                        p.consequence_physical(&self.environment.physical_world, ss);
+
+                        println!("{}", p.serialize(&mut SerializationCtx::debug()));
+                    }
+                }
+
+                // Remove Polymini from the World
+                {
+                    let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                    self.environment.remove_individual(polymini);
+                }
+            }
+        }
+        assert_eq!(0, 1);
+    }
 }
 
 //
@@ -642,6 +688,32 @@ mod test
 
     }
 
+    #[test]
+    fn test_solo_run()
+    {
+        let _ = env_logger::init();
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let chromosomes2 = vec![[0, 0x09, 0x6A, 0xAD],
+                                [0, 0x0B, 0xBE, 0xDA],
+                                [0,    0, 0xBE, 0xEF],
+                                [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new_at((21.0, 20.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((17.0, 20.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
+
+        let mut s = SimulationEpoch::new();
+        s.add_species(Species::new(vec![p1, p2]));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.solo_run();
+    }
+
+
+
+// TEST CASE for a bug where species was being fed as None
     #[ignore]
     #[test]
     fn test_serialize_bug_none_species()

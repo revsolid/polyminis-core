@@ -124,6 +124,14 @@ impl Environment
         //TODO: Add to other worlds
     }
 
+    pub fn remove_individual(&mut self, polymini: &mut Polymini) -> bool
+    {
+        let mut res = false;
+        res = self.physical_world.remove(polymini.get_physics_mut());
+        res 
+        //TODO: Remove from other worlds
+    }
+
     pub fn add_object(&mut self, world_object: WorldObject)
     {
         for p in &world_object.params
@@ -155,12 +163,6 @@ impl Environment
 
     pub fn advance_epoch(&self) -> Environment
     {
-        // For now advance_epoch and restart are equivalent
-        self.restart()
-    }
-
-    pub fn restart(&self) -> Environment
-    {
         let mut to_ret = Environment::new(self.species_slots,
                                           self.default_sensors.clone());
 
@@ -170,6 +172,12 @@ impl Environment
         }
 
         to_ret
+    }
+
+    pub fn restart(&self) -> Environment
+    {
+        // For now advance_epoch and restart are equivalent
+        self.advance_epoch()
     }
 }
 impl Serializable for Environment
