@@ -109,7 +109,7 @@ impl Species
                     }
                 };
 
-                let name = json_obj.get("Name").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
+                let name = json_obj.get("SpeciesName").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
                 let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
 
                 let empty_arr = vec![];
@@ -233,7 +233,7 @@ impl Serializable for Species
     fn serialize(&self,  ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("Name".to_string(), self.name.to_json());
+        json_obj.insert("SpeciesName".to_string(), self.name.to_json());
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
