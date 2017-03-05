@@ -130,6 +130,16 @@ impl Polymini
         }
     }
 
+    pub fn is_alive(&self) -> bool
+    {
+        !self.is_dead()
+    }
+
+    pub fn is_dead(&self) -> bool
+    {
+        self.dead
+    }
+
     pub fn get_perspective(&self) -> Perspective
     {
         Perspective::new(self.uuid,
@@ -166,45 +176,8 @@ impl Polymini
         
         let speed = self.get_speed();
         self.physics.act_on(substep, speed, &actions, phys_world);
-
-        let mut record_move_statistic = true;
-
-        for action in actions
-        {
-            // TODO: Filter actions in a cleaner way
-            match action
-            {
-                Action::MoveAction(_) =>
-                {
-                    if !self.physics.get_move_succeded() ||
-                       !self.physics.get_acted() ||
-                       !record_move_statistic 
-                    {
-                        continue
-                    }
-                    // Only record one action, even thou several actuators can output move actions
-                    record_move_statistic = false;
-                },
-                _ => {}
-            }
-
-            match FitnessStatistic::new_from_action(&action)
-            {
-                FitnessStatistic::NoOp =>
-                {
-                    debug!("NoOp Statistic - Skipping");
-                },
-                fitness_stat =>
-                {
-                    debug!("Inserting Fitness Statistic");
-                    self.fitness_statistics.push(fitness_stat);
-                }
-            }
-        }
-
-        debug!("Fitness Statistics Len: {}", self.fitness_statistics.len());
     }
-
+    
     pub fn restart(&mut self, random_ctx: &mut PolyminiRandomCtx, placement_func: &PlacementFunction)
     {
         info!("Restarting {} - Had Fitness {}", self.uuid, self.fitness());
@@ -242,10 +215,16 @@ impl Polymini
             return
         }
 
+
         self.physics.update_state(world);
         let pos_visited = self.physics.get_pos();
         self.fitness_statistics.push(FitnessStatistic::PositionVisited((pos_visited.0 as u32,
                                                                         pos_visited.1 as u32)));
+        // Record Move Action
+        if (self.physics.get_move_succeded() && self.physics.get_acted())
+        {
+            self.fitness_statistics.push(FitnessStatistic::Moved);
+        }
     }
 
     pub fn get_morphology(&self) -> &Morphology

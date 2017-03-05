@@ -81,25 +81,66 @@ impl Species
 
     pub fn new_from_json(json: &Json, default_sensors: &Vec<Sensor>,
                          placement_func: Box<PlacementFunction>,
-                         master_table: &HashMap<(TraitTier, u8), PolyminiTrait>) -> Option<Species>
+                         master_table: &HashMap<(TraitTier, u8), PolyminiTrait>,
+                         filter_function: Option<Box<Fn(&pmJsonArray)->Vec<Polymini>>>) -> Option<Species>
     {
         match *json
         {
             Json::Object(ref json_obj) => 
             {
+                if !JsonUtils::verify_has_fields(&json_obj, &vec!["TranslationTable".to_owned(),
+                                                                  "GAConfiguration".to_owned()])
+                {
+                   // The Verify should've logged what is missing we can return 
+                   return None
+                }
+
+                let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
+                let pgaconfig = match PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new())
+                {
+
+                    Some(config_v) =>
+                    {
+                        config_v
+                    },
+                    None =>
+                    {
+                        PGAConfig::defaults()
+                    }
+                };
+
                 let name = json_obj.get("Name").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
                 let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
-                let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
-                let pgaconfig = PGAConfig::new_from_json(json_obj.get("GAConfiguration").unwrap(), &mut SerializationCtx::new()).unwrap();
 
-                let inds: Vec<Polymini> = json_obj.get("Individuals").unwrap_or(&Json::Array(vec![])).as_array().unwrap().iter().map(
-                    | ind_json |
+                let empty_arr = vec![];
+                let empty_jarr = Json::Array(vec![]);
+                let inds_json = json_obj.get("Individuals").unwrap_or(&empty_jarr).as_array().unwrap_or(&empty_arr);
+                let inds: Vec<Polymini> = match filter_function
+                {
+                    None =>
                     {
-                        Polymini::new_from_json(ind_json, &translation_table).unwrap()
+                        // Default is just add every individual once
+                        //
+                        inds_json.iter().map(
+                            | ind_json |
+                            {
+                                let ind = Polymini::new_from_json(ind_json, &translation_table);
+                                match ind 
+                                {
+                                    Some(_) => {},
+                                    None => { error!("Polyminy couldn't be created from {:?}", ind_json); }
+                                }
+                                ind.unwrap()
+                            }
+                        ).collect()
+                    },
+                    Some(filter) =>
+                    {
+                        filter(inds_json)
                     }
-                ).collect();
-
-
+                };
+                
+                
                 if inds.len() == 0
                 {
                     Some(Species::new_from(name, translation_table, default_sensors, pgaconfig, placement_func))
@@ -163,6 +204,11 @@ impl Species
     {
         self.ga.step(&mut self.creation_context);
         self.reset();
+    }
+
+    pub fn set_ga_config(&mut self, config: PGAConfig)
+    {
+        self.ga.change_config(config);
     }
 
     pub fn get_accum_score(&self) -> f32

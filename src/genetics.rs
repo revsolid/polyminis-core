@@ -103,6 +103,18 @@ pub struct PGAConfig
 }
 impl PGAConfig
 {
+    pub fn defaults() -> PGAConfig
+    {
+        PGAConfig
+        {
+            population_size: 100,
+            percentage_elitism:  0.8,
+            percentage_mutation: 0.2,
+            fitness_evaluators: vec![],
+            instinct_weights: HashMap::new(),
+            genome_size: 4,
+        }
+    }
     pub fn get_new_individuals_per_generation(&self) -> usize
     {
          (( 1.0 - self.percentage_elitism) * self.population_size as f32).floor() as usize
@@ -151,6 +163,13 @@ impl Deserializable for PGAConfig
         {
             Json::Object(ref json_obj) =>
             {
+
+                if !JsonUtils::verify_has_fields(&json_obj, &vec!["PopulationSize".to_owned(), "GenomeSize".to_owned(), "PercentageElitism".to_owned(), "PercentageMutation".to_owned(),
+                                                                  "InstinctWeights".to_owned()])
+                {
+                   // The Verify should've logged what is missing we can return 
+                   return None
+                }
                 let ps = json_obj.get("PopulationSize").unwrap().as_u64().unwrap() as u32;
                 let gs = json_obj.get("GenomeSize").unwrap().as_u64().unwrap() as usize;
                 let pe = json_obj.get("PercentageElitism").unwrap().as_f64().unwrap() as f32;
@@ -232,6 +251,12 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
     pub fn get_config(&self) -> &PGAConfig
     {
         &self.config
+    }
+
+    pub fn change_config(&mut self, config: PGAConfig)
+    {
+        self.config = config;
+        self.current_generation = 0;
     }
     
     pub fn get_population(&self) -> &PolyminiGeneration<T>

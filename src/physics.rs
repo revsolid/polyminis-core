@@ -439,7 +439,7 @@ impl Physics
         }
         else
         {
-            self.move_succeded
+            false 
         };
 
         // Set our new initial position
@@ -592,7 +592,13 @@ impl PhysicsWorld
     {
         let mut new_pos;
         {
+            match self.world.collision_object(id)
+            {
+                Some(_) => {},
+                None => { error!("Trying to get {} in physics, but not here - Fatal...", id); }
+            }
             let p_obj = self.world.collision_object(id).unwrap();
+
             match action
             {
                 Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>

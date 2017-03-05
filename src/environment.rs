@@ -15,6 +15,7 @@ pub enum WorldObjectParams
     TemperatureWorldParams { temperature: f32 },
     // ETC..
 }
+#[derive(Clone)]
 pub struct WorldObject
 {
     uuid: PUUID,
@@ -213,5 +214,21 @@ impl Serializable for Environment
             json_obj.insert("PhysicsWorld".to_owned(), self.physical_world.serialize(ctx));
         }
         Json::Object(json_obj)
+    }
+}
+impl Clone for Environment
+{
+    fn clone(&self) -> Environment
+    {
+        let mut to_ret = Environment::new(self.species_slots,
+                                          self.default_sensors.clone());
+
+        for o in &self.objects
+        {
+            to_ret.add_object(o.clone());
+        }
+
+        to_ret
+
     }
 }

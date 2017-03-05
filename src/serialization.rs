@@ -4,6 +4,7 @@ extern crate rustc_serialize;
 pub use self::rustc_serialize::json::{self, Json, ToJson};
 //
 //
+//
 
 pub type pmJsonObject = json::Object;
 pub type pmJsonArray = json::Array;
@@ -80,3 +81,29 @@ pub trait Deserializable
         // Should log something to remind the caller that this is empty
     }
 }
+
+pub struct JsonUtils;
+impl JsonUtils
+{
+    pub fn verify_has_fields(json: &pmJsonObject, fields: &Vec<String>) -> bool
+    {
+        for f in fields
+        {
+            match json.get(f)
+            {
+                Some(_) =>
+                {
+                    continue
+                }
+                None =>
+                {
+                    return false
+                }
+            }
+        }
+        true
+    }
+}
+
+
+

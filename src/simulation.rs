@@ -19,6 +19,7 @@ use std::collections::{ HashMap, VecDeque };
 // the actual evolution system
 //
 //
+//
 pub struct Simulation
 {
     current_epoch: SimulationEpoch,
@@ -73,7 +74,7 @@ impl Simulation
                                                            {
                                                                ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
                                                                  (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                                           }), &master_translation_table).unwrap();
+                                                           }), &master_translation_table, None).unwrap();
                             epoch.add_species(s);
                         }
                     },
@@ -120,9 +121,15 @@ impl Simulation
         let new_epoch = self.current_epoch.advance();
         self.swap_epoch(new_epoch);
     }
-
 }
 
+//
+pub enum EpochRunType
+{
+    SoloRun,
+    EliteRun { top: u8 },
+    EvolutionRun,
+}
 
 //
 pub struct SimulationEpoch
@@ -152,17 +159,8 @@ impl SimulationEpoch
                 // env
                 let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
 
-                trace!("Creating Species");
-                /* Create species from their input data */
                 let mut species = vec![];
                 // NOTE: species are added afterwards by the owning simulation 
-                /*
-                for e in json_obj.get("Species").unwrap().as_array().unwrap()
-                {
-                    species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap()/*_or( some default )*/,
-                                 master_table).unwrap());
-                }
-                */
                 
                 // Config
                 let m_s = json_obj.get("MaxSteps").unwrap().as_u64().unwrap() as usize;
@@ -221,10 +219,9 @@ impl SimulationEpoch
         }
 
         let mut sp = species;
-        
         // Environment Registration
         debug!("Adding Species - Start Loop");
-        for i in 0..sp.get_generation().size() 
+        for i in 0..sp.get_generation().size()
         {
             debug!("{}", i);
             let ind = &mut sp.get_generation_mut().get_individual_mut(i);
@@ -449,50 +446,62 @@ impl SimulationEpoch
         sp
     }
 
-    fn solo_run(&mut self)
+    pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig)>)
     {
-        for s in 0..self.species.len()
+        for &(ref e, ref cfg) in envs
         {
-            for i in 0..self.species[s].get_generation().size()
+            self.environment = e.clone();
+            for s in 0..self.species.len()
             {
-                // Reset the World 
-                self.environment = self.environment.restart();
-
-                // Add Polymini to the World
+                self.species[s].set_ga_config(cfg.clone());
+                for i in 0..self.species[s].get_generation().size()
                 {
-                    let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
-                    self.environment.add_individual(polymini);
-                }
+                    // Reset the World 
+                    self.environment = self.environment.restart();
 
-                for _ in 0..self.max_steps
-                {
-                    for ss in 0..self.substeps
+                    // Add Polymini to the World
+                    let added_to_env;
                     {
-                        let perspective;
+                        let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                        added_to_env = self.environment.add_individual(polymini);
+                        if (!added_to_env)
                         {
-                            let polymini = self.species[s].get_generation().get_individual(i);
-                            perspective = polymini.get_perspective();
+                            polymini.die(&DeathContext::new(DeathReason::Placement, 0));
                         }
-            
-                        let sensed = self.sense_for(&perspective);
-                        let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
-                        p.sense_phase(&sensed);
-                        p.act_phase(ss, &mut self.environment.physical_world);
-                        self.environment.physical_world.step();
-                        p.consequence_physical(&self.environment.physical_world, ss);
-
-                        println!("{}", p.serialize(&mut SerializationCtx::debug()));
+                        debug!("Simulation::SoloRun{} Added polymini with id {} - {}", line!(), polymini.get_id(), added_to_env);
                     }
-                }
 
-                // Remove Polymini from the World
-                {
-                    let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
-                    self.environment.remove_individual(polymini);
+                    for _ in 0..self.max_steps
+                    {
+                        for ss in 0..self.substeps
+                        {
+                            let perspective;
+                            {
+                                let polymini = self.species[s].get_generation().get_individual(i);
+                                perspective = polymini.get_perspective();
+                            }
+                
+                            let sensed = self.sense_for(&perspective);
+                            let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
+                            p.sense_phase(&sensed);
+                            p.think_phase();
+                            p.act_phase(ss, &mut self.environment.physical_world);
+                            self.environment.physical_world.step();
+                            p.consequence_physical(&self.environment.physical_world, ss);
+                        }
+                    }
+
+                    // Remove Polymini from the World
+                    {
+                        let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                        if added_to_env //TODO: This is not 100% correct as they could've died during the sim.
+                        {
+                            self.environment.remove_individual(polymini);
+                        }
+                    }
                 }
             }
         }
-        assert_eq!(0, 1);
     }
 }
 
@@ -544,6 +553,7 @@ mod test
 
     use ::control::*;
     use ::environment::*;
+    use ::evaluation::*;
     use ::genetics::*;
     use ::morphology::*;
     use ::physics::*;
@@ -683,9 +693,6 @@ mod test
         let json_2 = s_prime.serialize(&mut ser_ctx);
 
         assert_eq!(json_2.pretty().to_string(), json_1.pretty().to_string());
-
-
-
     }
 
     #[test]
@@ -706,9 +713,18 @@ mod test
         let p2 = Polymini::new_at((17.0, 20.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
 
         let mut s = SimulationEpoch::new();
-        s.add_species(Species::new(vec![p1, p2]));
+        let evaluators = vec![FitnessEvaluator::PositionsVisited { weight: 1.0 }];
+        let new_config = PGAConfig { population_size: 5,
+                                     percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
+                                     genome_size: 8, instinct_weights: HashMap::new() };
+
+        let mut sp = Species::new(vec![p1, p2]);
+        sp.set_ga_config(new_config.clone());
+
+        s.add_species(sp);
         s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
-        s.solo_run();
+        s.solo_run(&vec![(Environment::new(1, vec![]), new_config.clone())]);
+        s.evaluate_species();
     }
 
 
