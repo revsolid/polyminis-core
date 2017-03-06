@@ -55,7 +55,7 @@ impl Simulation
                         },
                         _ => 
                         {
-                            error!("Wrong type of JSON object in MasterTranslationTable");
+                            println!("Wrong type of JSON object in MasterTranslationTable");
                         }
                     }
                 }
@@ -68,7 +68,7 @@ impl Simulation
                     },
                     None =>
                     {
-                        error!("Couldn't Create Simulation Epoch");
+                        println!("Couldn't Create Simulation Epoch");
                         return None
                     }
                 };
@@ -95,14 +95,14 @@ impl Simulation
                                 },
                                 None =>
                                 {
-                                    error!("Could not create Species");
+                                    println!("Could not create Species");
                                 }
                             }
                         }
                     },
                     ref v =>
                     {
-                        error!("Species is set but has the wrong type of value {}", v);
+                        println!("Species is set but has the wrong type of value {}", v);
                     }
                 }
                 
@@ -204,7 +204,7 @@ impl SimulationEpoch
             },
             _ => 
             {
-                error!("Couldn't create Simulation Epoch from Json {}", json);
+                println!("Couldn't create Simulation Epoch from Json {}", json);
                 None
             }
         }
