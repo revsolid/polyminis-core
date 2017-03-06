@@ -51,11 +51,11 @@ impl Simulation
                             let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
                             let tier = TraitTier::new_from_json(entry.get("Tier").unwrap(), &mut ser_ctx).unwrap(); 
                             let id = entry.get("TID").unwrap().as_u64().unwrap() as u8; 
-                            master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("Trait").unwrap(), &mut ser_ctx).unwrap());
+                            master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("InternalName").unwrap(), &mut ser_ctx).unwrap());
                         },
                         _ => 
                         {
-                            println!("Wrong type of JSON object in MasterTranslationTable");
+                            error!("Wrong type of JSON object in MasterTranslationTable");
                         }
                     }
                 }
@@ -68,7 +68,7 @@ impl Simulation
                     },
                     None =>
                     {
-                        println!("Couldn't Create Simulation Epoch");
+                        error!("Couldn't Create Simulation Epoch");
                         return None
                     }
                 };
@@ -95,14 +95,14 @@ impl Simulation
                                 },
                                 None =>
                                 {
-                                    println!("Could not create Species");
+                                    error!("Could not create Species");
                                 }
                             }
                         }
                     },
                     ref v =>
                     {
-                        println!("Species is set but has the wrong type of value {}", v);
+                        error!("Species is set but has the wrong type of value {}", v);
                     }
                 }
                 
@@ -204,7 +204,7 @@ impl SimulationEpoch
             },
             _ => 
             {
-                println!("Couldn't create Simulation Epoch from Json {}", json);
+                error!("Couldn't create Simulation Epoch from Json {}", json);
                 None
             }
         }
