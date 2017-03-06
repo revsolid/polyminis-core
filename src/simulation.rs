@@ -55,12 +55,24 @@ impl Simulation
                         },
                         _ => 
                         {
-                            warn!("Wrong type of JSON object in MasterTranslationTable");
+                            error!("Wrong type of JSON object in MasterTranslationTable");
                         }
                     }
                 }
 
-                let mut epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
+                let mut epoch = match SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table)
+                {
+                    Some(e) =>
+                    {
+                        e
+                    },
+                    None =>
+                    {
+                        error!("Couldn't Create Simulation Epoch");
+                        return None
+                    }
+                };
+
                 let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
 
                 match *json_obj.get("Species").unwrap()
@@ -74,8 +86,18 @@ impl Simulation
                                                            {
                                                                ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
                                                                  (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                                           }), &master_translation_table, None).unwrap();
-                            epoch.add_species(s);
+                                                           }), &master_translation_table, None);
+                            match s
+                            {
+                                Some(sv) =>
+                                {
+                                    epoch.add_species(sv);
+                                },
+                                None =>
+                                {
+                                    error!("Could not create Species");
+                                }
+                            }
                         }
                     },
                     ref v =>
@@ -182,6 +204,7 @@ impl SimulationEpoch
             },
             _ => 
             {
+                error!("Couldn't create Simulation Epoch from Json {}", json);
                 None
             }
         }
