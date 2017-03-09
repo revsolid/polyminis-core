@@ -499,12 +499,12 @@ impl SimulationEpoch
 
     pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig)>)
     {
-        for &(ref e, ref cfg) in envs
+        //for &(ref e, ref cfg) in envs
         {
-            self.environment = e.clone();
+            //self.environment = e.clone();
             for s in 0..self.species.len()
             {
-                self.species[s].set_ga_config(cfg.clone());
+                //self.species[s].set_ga_config(cfg.clone());
                 for i in 0..self.species[s].get_generation().size()
                 {
                     // Reset the World 
