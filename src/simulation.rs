@@ -3,6 +3,7 @@ use ::environment::*;
 use ::genetics::*;
 use ::physics::*;
 use ::polymini::*;
+use ::morphology::*;
 use ::serialization::*;
 use ::species::*;
 use ::traits::*;
@@ -73,7 +74,9 @@ impl Simulation
                     }
                 };
 
-                let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
+                let epoch_num = json_obj.get("EpochNum").unwrap_or(&Json::U64(0)).as_u64().unwrap_or(0);
+
+                let top_inds = json_obj.get("EliteIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap_or(0) as usize;
 
                 match *json_obj.get("Species").unwrap()
                 {
@@ -81,12 +84,29 @@ impl Simulation
                     {
                         for species_json in arr.iter()
                         {
+
+                            let mut filter_func: Option<Box<IndividualFilterFunction>> = None;
+                            if top_inds > 0
+                            {
+                                filter_func = Some(Box::new(move |inds_json, tt|
+                                    {
+                                        let mut res = vec![];
+                                        while(res.len() < inds_json.len())
+                                        {
+                                            let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt).unwrap();
+
+                                            res.push(ind);
+                                        }
+                                        res
+                                    }));
+                            }
+
                             let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
                                                            Box::new( | ctx: &mut PolyminiRandomCtx |
                                                            {
                                                                ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
                                                                  (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                                           }), &master_translation_table, None);
+                                                           }), &master_translation_table, filter_func);
                             match s
                             {
                                 Some(sv) =>

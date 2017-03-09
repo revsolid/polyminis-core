@@ -11,6 +11,8 @@ use ::traits::*;
 
 use std::collections::HashMap;
 
+pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable) -> Vec<Polymini>;
+
 pub struct Species
 {
     name: String,
@@ -82,7 +84,7 @@ impl Species
     pub fn new_from_json(json: &Json, default_sensors: &Vec<Sensor>,
                          placement_func: Box<PlacementFunction>,
                          master_table: &HashMap<(TraitTier, u8), PolyminiTrait>,
-                         filter_function: Option<Box<Fn(&pmJsonArray)->Vec<Polymini>>>) -> Option<Species>
+                         filter_function: Option<Box<IndividualFilterFunction>>) -> Option<Species>
     {
         match *json
         {
@@ -136,7 +138,7 @@ impl Species
                     },
                     Some(filter) =>
                     {
-                        filter(inds_json)
+                        filter(inds_json, &translation_table)
                     }
                 };
                 
