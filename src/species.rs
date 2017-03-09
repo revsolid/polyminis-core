@@ -11,7 +11,7 @@ use ::traits::*;
 
 use std::collections::HashMap;
 
-pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable) -> Vec<Polymini>;
+pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, usize) -> Vec<Polymini>;
 
 pub struct Species
 {
@@ -117,28 +117,29 @@ impl Species
                 let empty_arr = vec![];
                 let empty_jarr = Json::Array(vec![]);
                 let inds_json = json_obj.get("Individuals").unwrap_or(&empty_jarr).as_array().unwrap_or(&empty_arr);
+                let mut count = 0; // This is pretty bad // TODO
                 let inds: Vec<Polymini> = match filter_function
                 {
                     None =>
                     {
+                        let mut ret = vec![]; 
                         // Default is just add every individual once
-                        //
-                        inds_json.iter().map(
-                            | ind_json |
+                        for ind_json in inds_json
+                        {
+                            let ind = Polymini::new_from_json(ind_json, &translation_table);
+                            match ind 
                             {
-                                let ind = Polymini::new_from_json(ind_json, &translation_table);
-                                match ind 
-                                {
-                                    Some(_) => {},
-                                    None => { error!("Polyminy couldn't be created from {:?}", ind_json); }
-                                }
-                                ind.unwrap()
+                                Some(_) => {},
+                                None => { error!("Polyminy couldn't be created from {:?}", ind_json); }
                             }
-                        ).collect()
+                            count += 1;
+                            ret.push(ind.unwrap());
+                        }
+                        ret
                     },
                     Some(filter) =>
                     {
-                        filter(inds_json, &translation_table)
+                        filter(inds_json, &translation_table, pgaconfig.population_size as usize)
                     }
                 };
                 

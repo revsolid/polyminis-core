@@ -88,10 +88,10 @@ impl Simulation
                             let mut filter_func: Option<Box<IndividualFilterFunction>> = None;
                             if top_inds > 0
                             {
-                                filter_func = Some(Box::new(move |inds_json, tt|
+                                filter_func = Some(Box::new(move |inds_json, tt, max|
                                     {
                                         let mut res = vec![];
-                                        while(res.len() < inds_json.len())
+                                        while(res.len() <  max)
                                         {
                                             let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt).unwrap();
 
