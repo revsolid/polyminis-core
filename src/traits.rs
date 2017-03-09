@@ -150,8 +150,17 @@ impl Deserializable for Trait
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum TraitTag
 {
+    // Basic
     Empty,
     SpeedTrait,
+
+    // Thermal
+    ThermalHotResist,
+    ThermalColdResist,
+
+    // Ph
+    PhBasicResist,
+    PhAcidResist,
 }
 impl Serializable for TraitTag
 {
@@ -170,7 +179,11 @@ impl Deserializable for TraitTag
             {
                 match json_string.as_ref()
                 {
-                    "speedtrait" => { Some(TraitTag::SpeedTrait) },
+                    "speedtrait"        => { Some(TraitTag::SpeedTrait)       },
+                    "hotresist"         => { Some(TraitTag::ThermalHotResist) },
+                    "coldresist"        => { Some(TraitTag::ThermalColdResist)},
+                    "phbasictresist"    => { Some(TraitTag::PhBasicResist)    },
+                    "phacidresist"      => { Some(TraitTag::PhAcidResist)     },
                     _ =>
                     {
                         None

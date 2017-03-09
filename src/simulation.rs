@@ -254,6 +254,14 @@ impl SimulationEpoch
             {
                 ind.die(&DeathContext::new(DeathReason::Placement, 0));
             }
+            else
+            {
+                let start_pos = ind.get_physics().get_starting_pos();
+                if start_pos.0 < 0.0 || start_pos.1 < 0.0
+                {
+                    ind.die(&DeathContext::new(DeathReason::Placement, 0));
+                }
+            }
         }
         debug!("Adding Species - Done Loop");
 
@@ -423,7 +431,7 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.act_phase(substep, &mut self.environment.physical_world);
+                polymini.act_phase(substep, &mut self.environment.physical_world, &mut self.environment.thermal_world, &mut self.environment.ph_world);
             }
         }
     }
@@ -440,7 +448,7 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.consequence_physical(&self.environment.physical_world, substep);
+                polymini.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, substep);
             }
         }
         // After Physics is updated, each Polymini has data like
@@ -508,9 +516,11 @@ impl SimulationEpoch
                             let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
                             p.sense_phase(&sensed);
                             p.think_phase();
-                            p.act_phase(ss, &mut self.environment.physical_world);
+                            p.act_phase(ss, &mut self.environment.physical_world, &mut self.environment.thermal_world, &mut self.environment.ph_world);
                             self.environment.physical_world.step();
-                            p.consequence_physical(&self.environment.physical_world, ss);
+                            self.environment.thermal_world.step();
+                            //self.environment.ph_world.step();
+                            p.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, ss);
                         }
                     }
 

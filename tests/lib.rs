@@ -66,12 +66,6 @@ mod test
 
         let mut env = Environment::new(2, default_sensors);
 
-        env.add_static_object( (0.0, 0.0),   (100, 1));
-        env.add_static_object( (0.0, 0.0),   (1, 100));
-        env.add_static_object( (99.0, 0.0),  (1, 100));
-        env.add_static_object( (0.0, 99.0),  (100, 1));
-
-
         let steps_per_epoch = 50;
 
         let cfg = PGAConfig { population_size: 50,

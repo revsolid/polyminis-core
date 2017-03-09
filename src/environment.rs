@@ -1,8 +1,10 @@
 use ::control::*;
+use ::ph::*;
 use ::physics::*;
 use ::polymini::*;
 use ::serialization::*;
 use ::species::*;
+use ::thermal::*;
 use ::uuid::*;
 
 const KENVIRONMENT_DIMENSIONS: (f32, f32) = (100.0, 100.0);
@@ -12,7 +14,8 @@ const KENVIRONMENT_DIMENSIONS: (f32, f32) = (100.0, 100.0);
 pub enum WorldObjectParams
 {
     PhysicsWorldParams { position: (f32, f32), dimensions: (u8, u8) },
-    TemperatureWorldParams { temperature: f32 },
+    ThermoWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
+    PhWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
     // ETC..
 }
 #[derive(Clone)]
@@ -55,12 +58,48 @@ impl WorldObject
 // *//
 
 // ~NOTE
+//
+struct WorldBuilder;
+impl WorldBuilder
+{
+    // Json goes in -
+    // WorldObjects come out
+    fn populate_world(json_world: &Json) -> Vec<WorldObject>
+    {
+        match *json_world
+        {
+            Json::Object(ref world_config) => 
+            {
+                // Temperature
+                
+                // Ph
+                
+                // Density - How many dumb rocks
+                
+                // Surround it with walls? (on by default)
+                
+                // Material / Comp Information 
+                
+                // Budget for Generators 
+                vec![]
+            },
+            _ =>
+            {
+                // Is there a sensible default?
+                vec![]
+            }
+        }
+
+    }
+}
 
 
 pub struct Environment
 {
     pub dimensions: (f32, f32),
     pub physical_world: PhysicsWorld,
+    pub thermal_world: ThermoWorld,
+    pub ph_world: PhWorld,
     pub objects: Vec<WorldObject>,
     pub default_sensors: Vec<Sensor>, 
     species_slots: usize,
@@ -74,11 +113,17 @@ impl Environment
         {
             dimensions: dimensions,
             physical_world: PhysicsWorld::new(),
+            thermal_world: ThermoWorld::new(),
+            ph_world: PhWorld::new(),
             default_sensors: default_sensors,
             species_slots: species_slots,
             objects: vec![],
         };
 
+        //env.add_static_object( (0.0, 0.0),   (100, 1));
+        //env.add_static_object( (0.0, 0.0),   (1, 100));
+        //env.add_static_object( (99.0, 0.0),  (1, 100));
+        //env.add_static_object( (0.0, 99.0),  (100, 1));
         env
     }
 
@@ -100,14 +145,23 @@ impl Environment
                      d.get("y").unwrap().as_f64().unwrap() as f32)
                 };
 
+                let mut env = Environment {
+                              dimensions: dims,
+                              physical_world: PhysicsWorld::new_with_dimensions((100.0, 100.0)),
+                              thermal_world: ThermoWorld::new_with_dimensions((100.0, 100.0), 0.1), //TODO: Starting temperature - wherE?
+                              ph_world: PhWorld::new_with_dimensions((100.0, 100.0), 0.1),          //TODO: Starting acidity - wherE?
+                              default_sensors: default_sensors,
+                              species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
+                              objects: vec![],
+                            };
 
-                Some(Environment {
-                        dimensions: dims,
-                        physical_world: PhysicsWorld::new(),
-                        default_sensors: default_sensors,
-                        species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
-                        objects: vec![],
-                    })
+                //TODO: This is temporary
+                env.add_static_object( (0.0, 0.0),   (100, 1));
+                env.add_static_object( (0.0, 0.0),   (1, 100));
+                env.add_static_object( (99.0, 0.0),  (1, 100));
+                env.add_static_object( (0.0, 99.0),  (100, 1));
+
+                Some(env)
             },
             _ => 
             {
@@ -121,8 +175,17 @@ impl Environment
         let mut res = false;
         res = self.physical_world.add(polymini.get_physics_mut());
 
-        res
-        //TODO: Add to other worlds
+        if (!res)
+        {
+            false
+        }
+        else
+        {
+            let pos = polymini.get_physics().get_starting_pos();
+            res &= self.thermal_world.add(polymini.get_thermo_mut(), pos);
+            res &= self.ph_world.add(polymini.get_ph_mut(), pos);
+            true
+        }
     }
 
     pub fn remove_individual(&mut self, polymini: &mut Polymini) -> bool

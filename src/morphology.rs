@@ -512,6 +512,11 @@ impl Morphology
                 Some(c) => { curr_coord = c; },
                 None => { break; }
             }
+
+            if positions.len() > 40
+            {
+                break;
+            }
         }
 
         let l = min(cells.len(), positions.len());

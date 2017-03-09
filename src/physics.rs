@@ -566,7 +566,7 @@ impl PhysicsWorld
                             self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
                             PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions, physics.corner));
         let v = !self.finish_adding();
-        if v 
+        if v
         {
             warn!("Removing {}", physics.uuid);
             self.remove(physics);
