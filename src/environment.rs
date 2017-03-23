@@ -7,7 +7,7 @@ use ::species::*;
 use ::thermal::*;
 use ::uuid::*;
 
-const KENVIRONMENT_DIMENSIONS: (f32, f32) = (100.0, 100.0);
+const KENVIRONMENT_DIMENSIONS: (f32, f32) = (50.0, 50.0);
 
 // NOTE: Stubbing out what should be the World / Object hierarchy
 #[derive(Clone, Copy)]
@@ -96,13 +96,19 @@ impl WorldBuilder
 
 pub struct Environment
 {
+    // 
     pub dimensions: (f32, f32),
+    pub density: f32,
+    pub default_sensors: Vec<Sensor>, 
+    pub species_slots: usize,
+
+    // Worlds
     pub physical_world: PhysicsWorld,
     pub thermal_world: ThermoWorld,
     pub ph_world: PhWorld,
+
+    //
     pub objects: Vec<WorldObject>,
-    pub default_sensors: Vec<Sensor>, 
-    species_slots: usize,
 }
 impl Environment
 {
@@ -112,18 +118,14 @@ impl Environment
         let mut env = Environment
         {
             dimensions: dimensions,
-            physical_world: PhysicsWorld::new(),
-            thermal_world: ThermoWorld::new(),
-            ph_world: PhWorld::new(),
+            density: 0.5,
+            physical_world: PhysicsWorld::new_with_dimensions(dimensions),
+            thermal_world: ThermoWorld::new_with_dimensions(dimensions, 0.5),
+            ph_world: PhWorld::new_with_dimensions(dimensions, 0.5),
             default_sensors: default_sensors,
             species_slots: species_slots,
             objects: vec![],
         };
-
-        //env.add_static_object( (0.0, 0.0),   (100, 1));
-        //env.add_static_object( (0.0, 0.0),   (1, 100));
-        //env.add_static_object( (99.0, 0.0),  (1, 100));
-        //env.add_static_object( (0.0, 99.0),  (100, 1));
         env
     }
 
@@ -145,21 +147,64 @@ impl Environment
                      d.get("y").unwrap().as_f64().unwrap() as f32)
                 };
 
+
+                let tworld = match json_obj.get("Temperature")
+                {
+                    Some(&Json::Object(ref temp_obj)) =>
+                    {
+                        let max = temp_obj.get("Max").unwrap().as_f64().unwrap();
+                        let min = temp_obj.get("Min").unwrap().as_f64().unwrap();
+                        ThermoWorld::new_with_dimensions(dims, ((min+max)/2.0) as f32)
+                    },
+                    _ =>
+                    {
+                        ThermoWorld::new_with_dimensions(dims, 0.5)
+                    }
+                };
+
+
+                let phworld = match json_obj.get("Ph")
+                {
+                    Some(&Json::Object(ref temp_obj)) =>
+                    {
+                        let max = temp_obj.get("Max").unwrap().as_f64().unwrap();
+                        let min = temp_obj.get("Min").unwrap().as_f64().unwrap();
+                        PhWorld::new_with_dimensions(dims, ((min+max)/2.0) as f32)
+                    },
+                    _ =>
+                    {
+                        PhWorld::new_with_dimensions(dims, 0.5)
+                    }
+                };
+
+                let density = match json_obj.get("Density")
+                {
+                    Some(&Json::F64(rho)) =>
+                    {
+                        rho
+                    },
+                    _ =>
+                    {
+                        0.5 // TODO: Some Default?
+                    }
+                };
+
                 let mut env = Environment {
                               dimensions: dims,
-                              physical_world: PhysicsWorld::new_with_dimensions((100.0, 100.0)),
-                              thermal_world: ThermoWorld::new_with_dimensions((100.0, 100.0), 0.1), //TODO: Starting temperature - wherE?
-                              ph_world: PhWorld::new_with_dimensions((100.0, 100.0), 0.1),          //TODO: Starting acidity - wherE?
+                              physical_world: PhysicsWorld::new_with_dimensions(dims),
+                              thermal_world: tworld,
+                              ph_world:  phworld,
+                              density: density as f32,
                               default_sensors: default_sensors,
                               species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
                               objects: vec![],
                             };
 
                 //TODO: This is temporary
-                env.add_static_object( (0.0, 0.0),   (100, 1));
-                env.add_static_object( (0.0, 0.0),   (1, 100));
-                env.add_static_object( (99.0, 0.0),  (1, 100));
-                env.add_static_object( (0.0, 99.0),  (100, 1));
+                env.add_static_object( (0.0, 0.0),   (dims.0 as u8, 1));
+                env.add_static_object( (0.0, 0.0),   (1, dims.1 as u8));
+                env.add_static_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8));
+                env.add_static_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1));
 
                 Some(env)
             },
@@ -215,8 +260,6 @@ impl Environment
 
     pub fn add_static_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
     {
-        //let uuid = PolyminiUUIDCtx::next();
-        //self.physical_world.add_object(uuid, position, dimensions);
         self.add_object(WorldObject::new_static_object(position, dimensions));
     }
 

@@ -94,9 +94,6 @@ pub struct PGAConfig
     // Evaluation Context
     pub fitness_evaluators: Vec<FitnessEvaluator>,
 
-    // Weights for each Instinct
-    pub instinct_weights: HashMap<Instinct, f32>,
-
     // Genome Length
     pub genome_size: usize,
 
@@ -111,7 +108,6 @@ impl PGAConfig
             percentage_elitism:  0.8,
             percentage_mutation: 0.2,
             fitness_evaluators: vec![],
-            instinct_weights: HashMap::new(),
             genome_size: 4,
         }
     }
@@ -130,7 +126,7 @@ impl Serializable for PGAConfig
         json_obj.insert("PercentageMutation".to_owned(), self.percentage_mutation.to_json());
         json_obj.insert("GenomeSize".to_owned(), self.genome_size.to_json());
 
-        json_obj.insert("InstinctWeights".to_owned(), 
+        /*json_obj.insert("InstinctWeights".to_owned(), 
             Json::Object(
             {
                 let mut iw_json_obj = pmJsonObject::new();
@@ -139,7 +135,7 @@ impl Serializable for PGAConfig
                     iw_json_obj.insert(k.to_string(), v.to_json());
                 }
                 iw_json_obj
-            }));
+            }));*/
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
@@ -164,8 +160,7 @@ impl Deserializable for PGAConfig
             Json::Object(ref json_obj) =>
             {
 
-                if !JsonUtils::verify_has_fields(&json_obj, &vec!["PopulationSize".to_owned(), "GenomeSize".to_owned(), "PercentageElitism".to_owned(), "PercentageMutation".to_owned(),
-                                                                  "InstinctWeights".to_owned()])
+                if !JsonUtils::verify_has_fields(&json_obj, &vec!["PopulationSize".to_owned(), "GenomeSize".to_owned(), "PercentageElitism".to_owned(), "PercentageMutation".to_owned()])
                 {
                    // The Verify should've logged what is missing we can return 
                    return None
@@ -189,27 +184,10 @@ impl Deserializable for PGAConfig
                         vec![]
                     }
                 };
-
-                let mut iw = HashMap::new();
-
-                match *json_obj.get("InstinctWeights").unwrap()
-                {
-                    Json::Object(ref json_obj) =>
-                    {
-                        for (k,v) in json_obj.iter()
-                        {
-                            // TODO: This 'to_json' is pretty redundant
-                            let i = Instinct::new_from_json(&k.to_json(), ctx).unwrap();
-                            iw.insert(i, v.as_f64().unwrap() as f32);
-                        }
-                    },
-                    _ =>
-                    {
-                    }
-                }
+ 
                 Some(PGAConfig { population_size: ps,
                                  percentage_elitism: pe, fitness_evaluators: fe,
-                                 percentage_mutation: pm, genome_size: gs, instinct_weights: iw })
+                                 percentage_mutation: pm, genome_size: gs })
             },
             _ =>
             {
@@ -269,7 +247,7 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
         &mut self.population
     }
 
-    pub fn evaluate_population(&mut self)
+    pub fn evaluate_population(&mut self, /* INSTINCTS *,* INSTINCT WEIGHTS */)
     {
         // TODO: Instincts should come from somehwere else like a config
         self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic, Instinct::Hoarding, Instinct::Herding, Instinct::Predatory ]);
@@ -351,7 +329,7 @@ mod test
                                FitnessEvaluator::Shape { weight: 5.0 }];
         let cfg = PGAConfig { population_size: 50,
                               percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators,
-                              genome_size: 8, instinct_weights: HashMap::new() };
+                              genome_size: 8 };
         let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
                               
         let json_1 = cfg.serialize(ser_ctx);

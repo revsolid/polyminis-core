@@ -99,6 +99,8 @@ struct PolyminiPhysicsData
     corner: std_Cell<(i8, i8)>,
     collision_events: std_RefCell<Vec<CollisionEvent>>,
     looped: std_Cell<bool>,
+    attempted_move: std_Cell<bool>,
+    had_chance_to_move: std_Cell<bool>,
 }
 impl PolyminiPhysicsData 
 {
@@ -112,6 +114,8 @@ impl PolyminiPhysicsData
             corner: std_Cell::new(corner),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
+            attempted_move: std_Cell::new(false),
+            had_chance_to_move: std_Cell::new(false),
         }
     }
     fn new_static_object(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
@@ -124,6 +128,8 @@ impl PolyminiPhysicsData
             corner: std_Cell::new((0,0)),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
+            attempted_move: std_Cell::new(false),
+            had_chance_to_move: std_Cell::new(false),
         }
     }
 }
@@ -348,7 +354,11 @@ impl Physics
     pub fn get_normalized_pos(&self) -> (f32, f32)
     {
 
-        (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.0)
+        let n_pos = (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.1);
+        debug!("Normalized Pos - Before: {:?}", n_pos);
+        debug!("Normalized Pos - After : {:?}", self.ncoll_pos);
+        debug!("Normalized Pos - Dims  : {:?}", self.world_dimensions);
+        n_pos
     }
 
     pub fn get_distance_moved(&self) -> f32
@@ -442,8 +452,11 @@ impl Physics
             false 
         };
 
-        // Set our new initial position
+        // Set our new initial position and reset step variables
         o.data.initial_pos.set(o.position);
+        o.data.attempted_move.set(false);
+        o.data.had_chance_to_move.set(false);
+        o.data.looped.set(false);
 
         // Nuke'm
         o.data.collision_events.borrow_mut().clear();
@@ -599,6 +612,7 @@ impl PhysicsWorld
             }
             let p_obj = self.world.collision_object(id).unwrap();
 
+            p_obj.data.attempted_move.set(true);
             match action
             {
                 Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>
@@ -633,6 +647,7 @@ impl PhysicsWorld
                 Action::NoAction =>
                 {
                     new_pos = p_obj.position;
+                    p_obj.data.attempted_move.set(false);
                 },
                 _ =>
                 {
@@ -909,8 +924,68 @@ impl PhysicsWorld
                 }
                 else
                 {
-                    corrections.push((object_1.uid, n_pos, object_1.data.dimensions.get(), object_1.data.corner.get(), object_2.uid));
-                    corrections.push((object_2.uid, n_pos_2, object_2.data.dimensions.get(), object_2.data.corner.get(), object_1.uid));
+                    /* If 2 creatures collide, we make an effort to let one of them move (to avoid
+                     * the 'sticky' polyminis when they could go past each other)
+                     *
+                     *
+                     *
+                     *
+                     */
+                    let mut first;
+                    let mut second;
+
+                    if (object_1.uid > object_2.uid)
+                    {
+                        first = object_1;
+                        second = object_2;
+                    }
+                    else
+                    {
+                        first = object_2;
+                        second = object_1;
+                    }
+
+                    n_pos = first.data.initial_pos.get();
+                    n_pos_2 = second.data.initial_pos.get();
+
+                    if first.data.attempted_move.get() && second.data.attempted_move.get()
+                    {
+                        if first.data.had_chance_to_move.get()
+                        {
+                            corrections.push((first.uid, n_pos, first.data.dimensions.get(), first.data.corner.get(), second.uid));
+                            if second.data.had_chance_to_move.get()
+                            {
+                                corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                            }
+                            else
+                            {
+                                second.data.had_chance_to_move.set(true);
+                            }
+                        }
+                        else
+                        {
+                            corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                            first.data.had_chance_to_move.set(true);
+                        }
+
+                    }
+                    else
+                    {
+                        // Only one tried to move... only correct that one
+                        if (first.data.attempted_move.get())
+                        {
+                            corrections.push((first.uid, n_pos, first.data.dimensions.get(), first.data.corner.get(), second.uid));
+                        }
+                        else if (second.data.attempted_move.get())
+                        {
+                            corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                        }
+                        else
+                        {
+                            // How the f.. did this happen?
+                            error!("PhysicsCollisions:: Collision with 2 objects that report no movement. Harmless but signals presence of bug");
+                        }
+                    }
                 }
 
                 let ev = CollisionEvent

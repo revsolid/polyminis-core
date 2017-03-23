@@ -27,7 +27,7 @@ pub enum FitnessStatistic
     // Position
     FinalPosition(u8, u8),
 
-    Died,
+    Died(u32, u32),
 }
 impl FitnessStatistic
 {
@@ -133,7 +133,7 @@ impl FitnessEvaluator
                                                   {
                                                       &FitnessStatistic::TotalCells(c) =>
                                                       {
-                                                         accum += 10.0 - (10.0 - c as f32).abs();
+                                                         accum += w - ((10.0 - c as f32).abs());
                                                       },
                                                       _ => {}
                                                   }
@@ -151,9 +151,9 @@ impl FitnessEvaluator
                                                {
                                                   match stat
                                                   {
-                                                      &FitnessStatistic::Died =>
+                                                      &FitnessStatistic::Died(step, max) =>
                                                       {
-                                                          accum = 0.0;
+                                                          accum *= ( step as f32 / max as f32 );
                                                       },
                                                       _ => {}
                                                   }

@@ -152,15 +152,21 @@ impl Control
     
     pub fn sense(&mut self, sensed: &SensoryPayload)
     {
+        trace!("Sensing...");
         self.inputs.clear();
+
+        let mut i = 0;
+        let mut j = 0;
         for sensor in &self.sensor_list
         {
+            i += 1;
             match sensed.get(&sensor.tag)
             {
                 Some(payload) =>
                 {
                     //TODO: Multi-input sensors (e.g. Direction + Distance)
                     self.inputs.push(*payload);
+                    j += 1;
                 },
                 None =>
                 {
@@ -169,14 +175,18 @@ impl Control
                 }
             }
         }
+        trace!("Sensed... {}/{}", i, j);
     }
     pub fn think(&mut self)
     {
+        trace!("Thinking...");
         // Feedforward NN
         let mut ins : Vec<f32> = self.inputs.clone();
 
-        // Move all the values from [0..1] to [-0.5, 0.5]
-        ins = ins.iter().map(|&v| { v - 0.5 }).collect();
+        // Move all the values from [0..1] to [-0.5, 0.5] and amplify them by 10x
+        // NOTE: This 10x was needed because the inputs were changing too subtly and the NN wasn't
+        // really 'learning'
+        ins = ins.iter().map(|&v| { (v - 0.5) * 10.0 }).collect();
         
 
         let hid = self.nn[0].compute(&ins);
@@ -185,6 +195,13 @@ impl Control
         self.hidden = hid.clone();
 
         assert_eq!(outs.len(), self.outputs.len());
+
+        if outs.len() > 0
+        {
+            debug!("NNDebug::Think - Inputs:  {:?}", ins); 
+            debug!("NNDebug::Think - Hiddens: {:?}", hid); 
+            debug!("NNDebug::Think - Outputs: {:?}", outs);
+        }
         self.outputs = outs.iter().map(|&v| { v - 0.5 }).collect();
     }
     pub fn get_actions(&self) -> ActionList

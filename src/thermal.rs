@@ -45,6 +45,11 @@ impl Thermo
             }
         }
     }
+
+    pub fn inside_range(&self) -> bool
+    {
+        self.min <= self.current && self.current <= self.max
+    }
 }
 impl Serializable for Thermo
 {

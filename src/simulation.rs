@@ -88,12 +88,12 @@ impl Simulation
                             let mut filter_func: Option<Box<IndividualFilterFunction>> = None;
                             if top_inds > 0
                             {
-                                filter_func = Some(Box::new(move |inds_json, tt, max|
+                                filter_func = Some(Box::new(move |inds_json, tt, max, default_sensors|
                                     {
                                         let mut res = vec![];
                                         while(res.len() <  max)
                                         {
-                                            let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt).unwrap();
+                                            let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt, default_sensors).unwrap();
 
                                             res.push(ind);
                                         }
@@ -101,11 +101,12 @@ impl Simulation
                                     }));
                             }
 
+                            let dims = epoch.get_environment().dimensions.clone();
                             let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
-                                                           Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                           Box::new( move | ctx: &mut PolyminiRandomCtx |
                                                            {
-                                                               ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
-                                                                 (ctx.gen_range(0.0, 100.0) as f32).floor())
+                                                               ( (ctx.gen_range(0.0, dims.0) as f32).floor(),
+                                                                 (ctx.gen_range(0.0, dims.1) as f32).floor())
                                                            }), &master_translation_table, filter_func);
                             match s
                             {
@@ -272,14 +273,14 @@ impl SimulationEpoch
             // death to eliminate those genes from the pool as soon as possible
             if !self.environment.add_individual(ind)
             {
-                ind.die(&DeathContext::new(DeathReason::Placement, 0));
+                ind.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
             }
             else
             {
                 let start_pos = ind.get_physics().get_starting_pos();
-                if start_pos.0 < 0.0 || start_pos.1 < 0.0
+                if start_pos.0 < 0.0 || start_pos.1 < 0.0 || start_pos.0 >= self.environment.dimensions.0 || start_pos.1 >= self.environment.dimensions.1
                 {
-                    ind.die(&DeathContext::new(DeathReason::Placement, 0));
+                    ind.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
                 }
             }
         }
@@ -289,11 +290,11 @@ impl SimulationEpoch
         self.species.push(sp);
 
 
+        /*
         // Re-calculate proportions 
         let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
         {
-            accum += species.get_accum_score();
-            accum
+            accum + species.get_accum_score()
         }); 
 
         // Proportions
@@ -303,6 +304,7 @@ impl SimulationEpoch
         }
 
         let new_prop = 1.0 / self.species.len() as f32;
+        */
     }
     
     pub fn get_species(&self) -> &Vec<Species>
@@ -316,6 +318,21 @@ impl SimulationEpoch
         {
             species.evaluate();
         }
+
+        // Calculate Proportions of the species' fitness
+        //
+        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
+        {
+            accum += species.get_accum_score();
+            accum
+        }); 
+
+        let _ : Vec<i32> = self.species.iter_mut().map( |ref mut species|
+        {
+            let perc = species.get_accum_score() / total_species_scores;
+            species.set_percentage(perc);
+            0
+        }).collect();
     }
 
     pub fn dump_species_random_ctx(&mut self)
@@ -361,19 +378,6 @@ impl SimulationEpoch
 
         // TODO: Advance the Environment's epoch and copy it over
         let mut new_epoch = SimulationEpoch::new_restartable(self.environment.advance_epoch(), self.max_steps, self.restarts);
-
-
-        // Calculate Proportions of the species' fitness
-        //
-        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
-        {
-            accum += species.get_accum_score();
-            accum
-        }); 
-
-
-        // Proportions
-        new_epoch.proportions = self.species.iter().map( |ref species|  species.get_accum_score() / total_species_scores as f32 ).collect();
 
         debug!("Advancing Epoch - Reinserting Species");
         for n_s in new_epoch_species
@@ -469,6 +473,12 @@ impl SimulationEpoch
             {
                 let mut polymini = generation.get_individual_mut(i);
                 polymini.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, substep);
+
+                if polymini.get_hp() <= 0
+                {
+                    polymini.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
+                    self.environment.remove_individual(polymini);
+                }
             }
         }
         // After Physics is updated, each Polymini has data like
@@ -485,8 +495,8 @@ impl SimulationEpoch
     {
         let mut sp = SensoryPayload::new();
         // Fill the basic sensors
-        sp.insert(SensorTag::PositionX, perspective.pos.0 / self.environment.dimensions.0);
-        sp.insert(SensorTag::PositionY, perspective.pos.1 / self.environment.dimensions.1);
+        sp.insert(SensorTag::PositionX, perspective.pos.0);
+        sp.insert(SensorTag::PositionY, perspective.pos.1);
 
         sp.insert(SensorTag::LastMoveSucceded, if perspective.last_move_succeeded { 1.0 } else { 0.0 });
 
@@ -497,14 +507,15 @@ impl SimulationEpoch
         sp
     }
 
-    pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig)>)
+    pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig, Box<PlacementFunction>)>)
     {
-        //for &(ref e, ref cfg) in envs
+        let mut random_ctx = PolyminiRandomCtx::from_seed([3,1,4,3], "Solo Run".to_owned());
+        for &(ref e, ref cfg, ref p_func) in envs
         {
-            //self.environment = e.clone();
+            self.environment = e.clone();
             for s in 0..self.species.len()
             {
-                //self.species[s].set_ga_config(cfg.clone());
+                self.species[s].set_ga_config(cfg.clone());
                 for i in 0..self.species[s].get_generation().size()
                 {
                     // Reset the World 
@@ -514,17 +525,19 @@ impl SimulationEpoch
                     let added_to_env;
                     {
                         let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                        polymini.get_physics_mut().reset(&mut random_ctx, &(**p_func));
                         added_to_env = self.environment.add_individual(polymini);
                         if (!added_to_env)
                         {
-                            polymini.die(&DeathContext::new(DeathReason::Placement, 0));
+                            polymini.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
+                            continue
                         }
                         debug!("Simulation::SoloRun{} Added polymini with id {} - {}", line!(), polymini.get_id(), added_to_env);
                     }
 
-                    for _ in 0..self.max_steps
+                    'steps: for _ in 0..self.max_steps
                     {
-                        for ss in 0..self.substeps
+                        'sub_steps: for ss in 0..self.substeps
                         {
                             let perspective;
                             {
@@ -539,15 +552,22 @@ impl SimulationEpoch
                             p.act_phase(ss, &mut self.environment.physical_world, &mut self.environment.thermal_world, &mut self.environment.ph_world);
                             self.environment.physical_world.step();
                             self.environment.thermal_world.step();
-                            //self.environment.ph_world.step();
+                            self.environment.ph_world.step();
                             p.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, ss);
+
+                            if p.get_hp() <= 0
+                            {
+                                p.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
+                                self.environment.remove_individual(p);
+                                break 'steps;
+                            }
                         }
                     }
 
                     // Remove Polymini from the World
                     {
                         let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
-                        if added_to_env //TODO: This is not 100% correct as they could've died during the sim.
+                        if polymini.is_alive()
                         {
                             self.environment.remove_individual(polymini);
                         }
@@ -769,14 +789,21 @@ mod test
         let evaluators = vec![FitnessEvaluator::PositionsVisited { weight: 1.0 }];
         let new_config = PGAConfig { population_size: 5,
                                      percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
-                                     genome_size: 8, instinct_weights: HashMap::new() };
+                                     genome_size: 8 };
 
         let mut sp = Species::new(vec![p1, p2]);
         sp.set_ga_config(new_config.clone());
 
         s.add_species(sp);
         s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
-        s.solo_run(&vec![(Environment::new(1, vec![]), new_config.clone())]);
+        s.solo_run(&vec![(Environment::new(1, vec![]), new_config.clone(),
+                          Box::new( | ctx: &mut PolyminiRandomCtx |
+                                    {
+                                        ( (ctx.gen_range(12.0, 18.0) as f32).floor(),
+                                        (ctx.gen_range(12.0, 18.0) as f32).floor())
+                                    }
+                                  )
+                          )]);
         s.evaluate_species();
     }
 

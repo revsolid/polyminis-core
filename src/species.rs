@@ -2,6 +2,7 @@ use ::control::*;
 use ::environment::*;
 use ::evaluation::*;
 use ::genetics::*;
+use ::instincts::*;
 use ::morphology::*;
 use ::polymini::*;
 use ::physics::*;
@@ -11,7 +12,7 @@ use ::traits::*;
 
 use std::collections::HashMap;
 
-pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, usize) -> Vec<Polymini>;
+pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, usize, &Vec<Sensor>) -> Vec<Polymini>;
 
 pub struct Species
 {
@@ -19,6 +20,9 @@ pub struct Species
     ga: PolyminiGeneticAlgorithm<Polymini>,
     creation_context: PolyminiCreationCtx,
     placement_function: Box<PlacementFunction>,
+    accumulated_score: f32,
+    percentage_population: f32,
+    instinct_weights: HashMap<Instinct, f32>,
 }
 impl Species
 {
@@ -27,12 +31,10 @@ impl Species
         let id = PolyminiUUIDCtx::next();
         let sp_name = format!("Species {}", id);
 
-        // TODO: This configuration should come from somewhere 
+        // Default configuration
         let cfg = PGAConfig { population_size: pop.len() as u32,
                               percentage_elitism: 0.2, fitness_evaluators: vec![],
-                              percentage_mutation: 0.1, genome_size: 8, instinct_weights: HashMap::new() };
-
-        //
+                              percentage_mutation: 0.1, genome_size: 8 };// instinct_weights: HashMap::new() };
 
         //
         Species {
@@ -43,7 +45,10 @@ impl Species
                                               {
                                                   ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
                                                     (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                              })
+                                              }),
+                  accumulated_score: 0.0,
+                  percentage_population: 0.0,
+                  instinct_weights: HashMap::new(),
                 }
     }
 
@@ -78,6 +83,9 @@ impl Species
                   ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
                   creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
                   placement_function: placement_func,
+                  accumulated_score: 0.0,
+                  percentage_population: 0.0,
+                  instinct_weights: HashMap::new(),
                 }
     }
 
@@ -91,10 +99,11 @@ impl Species
             Json::Object(ref json_obj) => 
             {
                 if !JsonUtils::verify_has_fields(&json_obj, &vec!["TranslationTable".to_owned(),
-                                                                  "GAConfiguration".to_owned()])
+                                                                  "GAConfiguration".to_owned(),
+                                                                  "InstinctWeights".to_owned()])
                 {
-                   // The Verify should've logged what is missing we can return 
-                   return None
+                    error!("Verify Fields Failed");
+                    return None
                 }
 
                 let translation_table = TranslationTable::new_from_json(json_obj.get("TranslationTable").unwrap(), master_table).unwrap();
@@ -111,13 +120,31 @@ impl Species
                     }
                 };
 
+                let mut iw = HashMap::new();
+
                 let name = json_obj.get("SpeciesName").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
-                let mut ctx = PolyminiRandomCtx::from_seed([0, 1, 2, 4], name.clone());
+                let percentage = json_obj.get("Percentage").unwrap_or(&Json::Null).as_f64().unwrap_or(0.0) as f32;
+                let mut ctx = PolyminiRandomCtx::from_seed([3, 1, 2, 4], name.clone());
+
+                match json_obj.get("InstinctWeights")
+                {
+                    Some(&Json::Object(ref json_obj)) =>
+                    {
+                        for (k,v) in json_obj.iter()
+                        {
+                            // TODO: This 'to_json' is pretty redundant
+                            let i = Instinct::new_from_json(&k.to_json(), &mut SerializationCtx::new()).unwrap();
+                            iw.insert(i, v.as_f64().unwrap() as f32);
+                        }
+                    },
+                    _ =>
+                    {
+                    }
+                };
 
                 let empty_arr = vec![];
                 let empty_jarr = Json::Array(vec![]);
                 let inds_json = json_obj.get("Individuals").unwrap_or(&empty_jarr).as_array().unwrap_or(&empty_arr);
-                let mut count = 0; // This is pretty bad // TODO
                 let inds: Vec<Polymini> = match filter_function
                 {
                     None =>
@@ -126,20 +153,19 @@ impl Species
                         // Default is just add every individual once
                         for ind_json in inds_json
                         {
-                            let ind = Polymini::new_from_json(ind_json, &translation_table);
+                            let ind = Polymini::new_from_json(ind_json, &translation_table, default_sensors);
                             match ind 
                             {
                                 Some(_) => {},
                                 None => { error!("Polyminy couldn't be created from {:?}", ind_json); }
                             }
-                            count += 1;
                             ret.push(ind.unwrap());
                         }
                         ret
                     },
                     Some(filter) =>
                     {
-                        filter(inds_json, &translation_table, pgaconfig.population_size as usize)
+                        filter(inds_json, &translation_table, pgaconfig.population_size as usize, default_sensors)
                     }
                 };
                 
@@ -150,13 +176,24 @@ impl Species
                 }
                 else
                 {
-                    Some(Species { name: name,
+                    let mut s = Species { name: name,
                                    ga: PolyminiGeneticAlgorithm::new_with(inds, pgaconfig),
                                    creation_context: PolyminiCreationCtx::new_from(translation_table, default_sensors.clone(), ctx),
-                                   placement_function: placement_func })
+                                   placement_function: placement_func,
+                                   accumulated_score: 0.0,
+                                   percentage_population: percentage,
+                                   instinct_weights: iw,
+                                 };
+                    s.restart();
+
+                    Some(s)
                 }
             },
-            _ => { None }
+            _ =>
+            {
+                error!("Species JSON is not an Object"); 
+                None
+            }
         }
     }
 
@@ -201,6 +238,15 @@ impl Species
     pub fn evaluate(&mut self)
     {
         self.ga.evaluate_population();
+
+        let species_score = self.ga.get_population().iter().fold(0.0,
+                                |mut accum, ind|
+                                {
+                                    accum += ind.raw();
+                                    accum
+                                });
+
+        self.accumulated_score = species_score;
     }
 
     pub fn advance_epoch(&mut self)
@@ -214,15 +260,19 @@ impl Species
         self.ga.change_config(config);
     }
 
+    pub fn get_percentage(&mut self) -> f32
+    {
+        self.percentage_population
+    }
+
+    pub fn set_percentage(&mut self, perc: f32)
+    {
+        self.percentage_population = perc;
+    }
+
     pub fn get_accum_score(&self) -> f32
     {
-        //NOTE: Accumulated Score = the raw scores of all the Polyminis from
-        // this species
-        self.ga.get_population().iter().fold( 0.0, |mut accum, ind |
-        {
-            accum += ind.raw();
-            accum
-        })
+        self.accumulated_score
     }
 
     pub fn dump_random_ctx(&mut self)
@@ -242,6 +292,7 @@ impl Serializable for Species
         {
             json_obj.insert("TranslationTable".to_string(), self.creation_context.trans_table.serialize(ctx));
             json_obj.insert("GAConfiguration".to_string(), self.ga.get_config().serialize(ctx));
+            json_obj.insert("Percentage".to_string(), self.percentage_population.to_json());
         }
 
         let mut pop_arr = pmJsonArray::new();

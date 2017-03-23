@@ -18,20 +18,26 @@ use std::collections::hash_map::Entry;
 
 pub struct Stats
 {
-    hp: i32,
-    energy: i32,
+    max_hp: i32,
+    current_hp: i32,
+    max_energy: i32,
+    current_energy: i32,
     speed: usize,
     total_cells: usize,
     //TODO: combat_stats: CombatStatistics
 }
-const BASE_LINE_TMP: (f32, f32) = (-0.1, 0.2);
+const BASE_LINE_TMP: (f32, f32) = (0.0, 1.0);
+const BASE_LINE_PH:  (f32, f32) = (0.0, 1.0);
 impl Stats
 {
     pub fn new(morph: &Morphology) -> Stats
     {
         let sp = Stats::calculate_speed_from(morph);
         let size = Stats::calculate_size_from(morph);
-        Stats { hp: 0, energy: 0, speed: sp, total_cells: size }
+        let hp = (size / 2) as i32;
+        let nrg = Stats::calculate_energy_from(morph);
+        Stats { max_hp: hp, current_hp: hp, max_energy: nrg, current_energy: nrg,
+                speed: sp, total_cells: size }
     }
     fn calculate_speed_from(morph: &Morphology) -> usize
     {
@@ -40,6 +46,10 @@ impl Stats
     fn calculate_size_from(morph: &Morphology) -> usize
     {
         morph.get_total_cells()
+    }
+    fn calculate_energy_from(morph: &Morphology) -> i32
+    {
+        0
     }
     fn calculate_temperature_range(morph: &Morphology) -> (f32, f32)
     {
@@ -61,16 +71,16 @@ impl Stats
     {
         // What is the starting polymini temperature?
         // TODO: Make this much more data driven
-        let mut h_resist = 0.05 *
+        let mut b_resist = 0.05 *
                            morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(
                                                       TraitTag::PhBasicResist)).len() as f32;
-        let mut c_resist = -0.05 *
+        let mut a_resist = -0.05 *
                            morph.get_traits_of_type(PolyminiTrait::PolyminiSimpleTrait(
                                                       TraitTag::PhAcidResist)).len() as f32;
 
-        let min_tmp = (BASE_LINE_TMP.0 + c_resist).max(0.0);
-        let max_tmp = (BASE_LINE_TMP.1 + h_resist).min(1.0);
-        (min_tmp, max_tmp)
+        let min_ph = (BASE_LINE_PH.0 + a_resist).max(0.0);
+        let max_ph = (BASE_LINE_PH.1 + b_resist).min(1.0);
+        (min_ph, max_ph)
     }
 }
 impl Serializable for Stats
@@ -78,8 +88,8 @@ impl Serializable for Stats
     fn serialize(&self, _: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        json_obj.insert("HP".to_owned(), self.hp.to_json());
-        json_obj.insert("Energy".to_owned(), self.energy.to_json());
+        json_obj.insert("HP".to_owned(), self.max_hp.to_json());
+        json_obj.insert("Energy".to_owned(), self.max_energy.to_json());
         json_obj.insert("Speed".to_owned(), (self.speed + 1).to_json());
         json_obj.insert("Size".to_owned(), self.total_cells.to_json());
         Json::Object(json_obj)
@@ -152,7 +162,7 @@ impl Polymini
 
     }
 
-    pub fn new_from_json(json:&Json, tt: &TranslationTable) -> Option<Polymini>
+    pub fn new_from_json(json:&Json, tt: &TranslationTable, default_sensors: &Vec<Sensor>) -> Option<Polymini>
     {
         match *json 
         {
@@ -160,9 +170,20 @@ impl Polymini
             {
 
                 let morph =  Morphology::new_from_json(&json_obj.get("Morphology").unwrap(), tt).unwrap();
-                let control = Control::new_from_json(&json_obj.get("Control").unwrap(), morph.get_sensor_list(),
+                let mut sensor_list = default_sensors.clone();
+                sensor_list.append(&mut morph.get_sensor_list());
+                let control = Control::new_from_json(&json_obj.get("Control").unwrap(), sensor_list,
                                                      morph.get_actuator_list()).unwrap();
-                Some(Polymini::new_with_control((0.0,0.0), morph, control))
+                let mut pmini = Polymini::new_with_control((0.0,0.0), morph, control);
+
+
+                let raw = json_obj.get("Raw").unwrap_or(&Json::Null).as_f64().unwrap_or(0.0) as f32;
+                let fitness = json_obj.get("Fitness").unwrap_or(&Json::Null).as_f64().unwrap_or(0.0) as f32;
+
+                pmini.set_raw(raw);
+                pmini.set_fitness(fitness);
+
+                Some(pmini)
             },
             _ =>
             {
@@ -184,7 +205,7 @@ impl Polymini
     pub fn get_perspective(&self) -> Perspective
     {
         Perspective::new(self.uuid,
-                         self.physics.get_pos(),
+                         self.physics.get_normalized_pos(),
                          self.physics.get_orientation(),
                          self.physics.get_move_succeded())
     }
@@ -245,6 +266,7 @@ impl Polymini
     pub fn die(&mut self, death_context: &DeathContext)
     {
         self.dead = true;
+        self.fitness_statistics.push(FitnessStatistic::Died(death_context.step, death_context.max_steps));
     }
 
     pub fn get_id(&self) -> PUUID 
@@ -252,25 +274,37 @@ impl Polymini
         self.uuid
     }
 
-    pub fn consequence(&mut self, pworld: &PhysicsWorld, tworld: &ThermoWorld, ph: &PhWorld, substep: usize)
+    pub fn consequence(&mut self, physicsworld: &PhysicsWorld, tworld: &ThermoWorld, phworld: &PhWorld, substep: usize)
     {
         if self.dead
         {
             return
         }
 
-        self.physics.update_state(pworld);
+        self.physics.update_state(physicsworld);
         let pos_visited = self.physics.get_pos();
         self.fitness_statistics.push(FitnessStatistic::PositionVisited((pos_visited.0 as u32,
                                                                         pos_visited.1 as u32)));
         // Record Move Action
-        if (self.physics.get_move_succeded() && self.physics.get_acted())
+        if self.physics.get_move_succeded() && self.physics.get_acted()
         {
             self.fitness_statistics.push(FitnessStatistic::Moved);
         }
 
         self.thermo.update_state(tworld);
-        //self.ph.update_state(tworld);
+
+        if !self.thermo.inside_range()
+        {
+            // NOTE RULES
+            self.stats.current_hp -= 1; // Scale with difference maybe ?
+        }
+
+        self.ph.update_state(phworld);
+        if !self.ph.inside_range()
+        {
+            // NOTE RULES
+            self.stats.current_hp -= 1; // Scale with difference maybe ?
+        }
     }
 
     pub fn get_morphology(&self) -> &Morphology
@@ -308,6 +342,10 @@ impl Polymini
         &mut self.thermo
     }
 
+    pub fn get_hp(&self) -> i32
+    {
+        self.stats.current_hp
+    }
 
     pub fn get_control(&self) -> &Control
     {
@@ -343,12 +381,15 @@ impl Serializable for Polymini
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
         {
             json_obj.insert("Morphology".to_owned(), self.get_morphology().serialize(ctx));
+            json_obj.insert("Speed".to_owned(), (self.stats.speed + 1).to_json());
         }
 
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
         {
             json_obj.insert("Alive".to_owned(), Json::Boolean(!self.dead));
+            json_obj.insert("HP".to_owned(), Json::I64(self.stats.current_hp as i64));
+            json_obj.insert("Energy".to_owned(), Json::I64(self.stats.current_energy as i64));
         }
 
         json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
@@ -361,7 +402,7 @@ impl Serializable for Polymini
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS) || 
-           ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB) 
+           ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) 
         {
             json_obj.insert("Fitness".to_owned(), self.fitness().to_json());
             json_obj.insert("Raw".to_owned(), self.raw().to_json());
@@ -373,7 +414,7 @@ impl Serializable for Polymini
             let mut stats_json_obj = pmJsonObject::new();
             let mut stats_dict = HashMap::new();
 
-            warn!("Len of Statistics: {}", self.fitness_statistics.len());
+            trace!("Len of Statistics: {}", self.fitness_statistics.len());
             for stat in &self.fitness_statistics
             {
                 match stats_dict.entry(stat)
@@ -440,6 +481,7 @@ impl PolyminiGAIndividual for Polymini
             
                 self.morph.mutate(&mut creation_ctx.random_context, &creation_ctx.trans_table);
                 let mut sensor_list = creation_ctx.default_sensors.clone();
+                sensor_list.append(&mut self.morph.get_sensor_list());
                 self.control.mutate(&mut creation_ctx.random_context, 
                                     sensor_list, self.morph.get_actuator_list());
                 self.stats = Stats::new(&self.morph);
@@ -460,7 +502,6 @@ impl PolyminiGAIndividual for Polymini
             {
                 debug!(" using {} statistics", self.fitness_statistics.len());
 
-                self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(self.physics.get_distance_moved() as u32));
 
                 self.fitness_statistics.push(FitnessStatistic::TotalCells(self.stats.total_cells));
 
@@ -468,10 +509,10 @@ impl PolyminiGAIndividual for Polymini
                 self.fitness_statistics.push(FitnessStatistic::FinalPosition((255.0*norm_pos.0) as u8,
                                                                              (255.0*norm_pos.1) as u8));
 
-                if (self.dead)
+                if (!self.dead)
                 {
-                    // TODO: Death reason, how long into the simulation before it died
-                    self.fitness_statistics.push(FitnessStatistic::Died);
+                    self.fitness_statistics.push(FitnessStatistic::DistanceTravelled(
+                                                    self.physics.get_distance_moved() as u32));
                 }
 
                 ctx.evaluate(&self.fitness_statistics);
