@@ -192,7 +192,9 @@ impl FitnessEvaluator
             {
                 let i = Instinct::Nomadic;
                 let mut already_counted = HashSet::new();
-                let v = statistics.iter().fold(0.0,
+                let mut already_counted_x = HashSet::new();
+                let mut already_counted_y = HashSet::new();
+                let mut v = statistics.iter().fold(0.0,
                                                |mut accum, stat|
                                                {
                                                   match stat
@@ -204,11 +206,26 @@ impl FitnessEvaluator
                                                               already_counted.insert(pos);
                                                               accum += w;
                                                           }
+                                                          if !already_counted_x.contains(&pos.0)
+                                                          {
+                                                              already_counted_x.insert(pos.0);
+                                                          }
+                                                          if !already_counted_y.contains(&pos.1)
+                                                          {
+                                                              already_counted_y.insert(pos.1);
+                                                          }
                                                       },
                                                       _ => {}
                                                   }
                                                   accum
                                                });
+
+                if already_counted_x.len() > 1 && already_counted_y.len() > 1
+                {
+                    // If movement happened in X and Y give a
+                    // bonus
+                    v *= 1.1
+                }
                 debug!("Evaluated {} for {} due to Positions Visited", v, i);
                 (i,v)
             }
@@ -309,19 +326,22 @@ pub struct PolyminiEvaluationCtx
 {
     evaluators: Vec<FitnessEvaluator>,
     accumulator: PolyminiFitnessAccumulator,
+    accumulates_over: bool,
 }
 impl PolyminiEvaluationCtx
 {
     pub fn new() -> PolyminiEvaluationCtx
     {
         PolyminiEvaluationCtx { evaluators: vec![],
-                                accumulator: PolyminiFitnessAccumulator::new(vec![ Instinct::Basic ]) }
+                                accumulator: PolyminiFitnessAccumulator::new(vec![ Instinct::Basic ]),
+                                accumulates_over: false }
     }
 
-    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator) -> PolyminiEvaluationCtx
+    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator, accumulates_over: bool) -> PolyminiEvaluationCtx
     {
         PolyminiEvaluationCtx { evaluators: evaluators,
-                                accumulator: accumulator }
+                                accumulator: accumulator,
+                                accumulates_over: false }
     }
 
     pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>)
@@ -364,6 +384,11 @@ impl PolyminiEvaluationCtx
         {
             0.0
         }
+    }
+
+    pub fn accumulates_over(&self) -> bool
+    {
+        self.accumulates_over
     }
 }
 
@@ -419,7 +444,7 @@ mod test
         accum.add(&Instinct::Nomadic, 1.0);
         accum.add(&Instinct::Predatory, 1.0);
         
-        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum };
+        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false };
 
         assert_eq!(eval_ctx.get_raw(), 3.0);
         let mut map = HashMap::new();

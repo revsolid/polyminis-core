@@ -11,8 +11,9 @@ use ::uuid::*;
 use ::traits::*;
 
 use std::collections::HashMap;
+use std::hash::{ Hash, Hasher, SipHasher };
 
-pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, usize, &Vec<Sensor>) -> Vec<Polymini>;
+pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, &Vec<Sensor>) -> Vec<Polymini>;
 
 pub struct Species
 {
@@ -33,7 +34,7 @@ impl Species
 
         // Default configuration
         let cfg = PGAConfig { population_size: pop.len() as u32,
-                              percentage_elitism: 0.2, fitness_evaluators: vec![],
+                              percentage_elitism: 0.2, fitness_evaluators: vec![], accumulates_over: false,
                               percentage_mutation: 0.1, genome_size: 8 };// instinct_weights: HashMap::new() };
 
         //
@@ -60,7 +61,15 @@ impl Species
 
         let mut inds = vec![];
         let uuid = PolyminiUUIDCtx::next(); 
-        let mut ctx = PolyminiRandomCtx::from_seed([uuid as u32, 1, 2, uuid as u32], format!("Species {}", uuid));
+        let mut s = SipHasher::new();
+        let name_hash = name.hash(&mut s);
+        let hash_v = s.finish();
+        let mut ctx = PolyminiRandomCtx::from_seed([
+            ((hash_v >> 32) & 0xFFFFFFFF) as u32,
+            (hash_v         & 0xFFFFFFFF) as u32,
+            name.len()                    as u32,
+            3141,
+        ], name.clone());
 
         for i in 0..pgaconfig.population_size
         {
@@ -124,7 +133,16 @@ impl Species
 
                 let name = json_obj.get("SpeciesName").unwrap_or(&Json::Null).as_string().unwrap_or("Test Species").clone().to_string();
                 let percentage = json_obj.get("Percentage").unwrap_or(&Json::Null).as_f64().unwrap_or(0.0) as f32;
-                let mut ctx = PolyminiRandomCtx::from_seed([3, 1, 2, 4], name.clone());
+
+                let mut s = SipHasher::new();
+                let name_hash = name.hash(&mut s);
+                let hash_v = s.finish();
+                let mut ctx = PolyminiRandomCtx::from_seed([
+                    ((hash_v >> 32) & 0xFFFFFFFF) as u32,
+                    (hash_v         & 0xFFFFFFFF) as u32,
+                    name.len()                    as u32,
+                    3141,
+                ], name.clone());
 
                 match json_obj.get("InstinctWeights")
                 {
@@ -165,7 +183,7 @@ impl Species
                     },
                     Some(filter) =>
                     {
-                        filter(inds_json, &translation_table, pgaconfig.population_size as usize, default_sensors)
+                        filter(inds_json, &translation_table, default_sensors)
                     }
                 };
                 

@@ -76,7 +76,9 @@ impl Simulation
 
                 let epoch_num = json_obj.get("EpochNum").unwrap_or(&Json::U64(0)).as_u64().unwrap_or(0);
 
-                let top_inds = json_obj.get("EliteIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap_or(0) as usize;
+                let top_inds = json_obj.get("EliteIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap() as usize;
+
+                let mut max = json_obj.get("MaxIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap() as usize;
 
                 match *json_obj.get("Species").unwrap()
                 {
@@ -88,10 +90,16 @@ impl Simulation
                             let mut filter_func: Option<Box<IndividualFilterFunction>> = None;
                             if top_inds > 0
                             {
-                                filter_func = Some(Box::new(move |inds_json, tt, max, default_sensors|
+                                filter_func = Some(Box::new(move |inds_json, tt, default_sensors|
                                     {
+                                        let mut internal_max = max;
+                                        if internal_max == 0
+                                        {
+                                            internal_max = inds_json.len();
+                                        }
+
                                         let mut res = vec![];
-                                        while(res.len() <  max)
+                                        while(res.len() <  internal_max)
                                         {
                                             let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt, default_sensors).unwrap();
 
@@ -199,6 +207,12 @@ impl SimulationEpoch
         {
             Json::Object(ref json_obj) =>
             {
+                if !JsonUtils::verify_has_fields(json_obj, &vec!["Environment".to_owned(), "MaxSteps".to_owned(), "Restarts".to_owned(), "Substeps".to_owned(), "Proportions".to_owned()])
+                {
+                    error!("SimulationEpoch::from_json failed! - Returning None");
+                    error!("Dumping JSON, \n{}", json.to_string());
+                    return None
+                }
                 // env
                 let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
 
@@ -310,6 +324,11 @@ impl SimulationEpoch
     pub fn get_species(&self) -> &Vec<Species>
     {
         &self.species
+    }
+
+    pub fn get_species_mut(&mut self) -> &mut Vec<Species>
+    {
+        &mut self.species
     }
 
     pub fn evaluate_species(&mut self)
@@ -474,7 +493,7 @@ impl SimulationEpoch
                 let mut polymini = generation.get_individual_mut(i);
                 polymini.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, substep);
 
-                if polymini.get_hp() <= 0
+                if polymini.get_hp() <= 0 && polymini.is_alive()
                 {
                     polymini.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
                     self.environment.remove_individual(polymini);
@@ -515,7 +534,10 @@ impl SimulationEpoch
             self.environment = e.clone();
             for s in 0..self.species.len()
             {
-                self.species[s].set_ga_config(cfg.clone());
+                // This is not optional, so enforce it
+                let mut new_cfg = cfg.clone();
+                new_cfg.accumulates_over = true;
+                self.species[s].set_ga_config(new_cfg);
                 for i in 0..self.species[s].get_generation().size()
                 {
                     // Reset the World 
@@ -573,6 +595,8 @@ impl SimulationEpoch
                         }
                     }
                 }
+
+                self.species[s].evaluate();
             }
         }
     }
@@ -691,7 +715,7 @@ mod test
         let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
-        s.add_object(WorldObject::new_static_object((10.0, 2.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((10.0, 2.0), (1, 1), false));
         for _ in 0..10 
         {
             s.step();
@@ -723,7 +747,7 @@ mod test
         println!(">> {:?}", p2.get_physics().get_pos());
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
         for _ in 0..10 
         {
             s.step();
@@ -749,7 +773,7 @@ mod test
 
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
 
         let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
         let json_1 = s.serialize(&mut ser_ctx);
@@ -788,14 +812,14 @@ mod test
         let mut s = SimulationEpoch::new();
         let evaluators = vec![FitnessEvaluator::PositionsVisited { weight: 1.0 }];
         let new_config = PGAConfig { population_size: 5,
-                                     percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators,
+                                     percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, accumulates_over: false,
                                      genome_size: 8 };
 
         let mut sp = Species::new(vec![p1, p2]);
         sp.set_ga_config(new_config.clone());
 
         s.add_species(sp);
-        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
         s.solo_run(&vec![(Environment::new(1, vec![]), new_config.clone(),
                           Box::new( | ctx: &mut PolyminiRandomCtx |
                                     {

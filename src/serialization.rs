@@ -97,7 +97,7 @@ impl JsonUtils
                 }
                 None =>
                 {
-                    error!("JSON Verify Fields missing field {}", f);
+                    warn!("JSON Verify Fields missing field {}", f);
                     return false
                 }
             }

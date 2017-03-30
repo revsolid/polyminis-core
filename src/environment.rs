@@ -7,6 +7,8 @@ use ::species::*;
 use ::thermal::*;
 use ::uuid::*;
 
+use std::collections::HashSet;
+
 const KENVIRONMENT_DIMENSIONS: (f32, f32) = (50.0, 50.0);
 
 // NOTE: Stubbing out what should be the World / Object hierarchy
@@ -16,6 +18,9 @@ pub enum WorldObjectParams
     PhysicsWorldParams { position: (f32, f32), dimensions: (u8, u8) },
     ThermoWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
     PhWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
+
+    // Objects with this Params get Serialized / Written in the DB
+    PermanentWorldParams,
     // ETC..
 }
 #[derive(Clone)]
@@ -26,12 +31,19 @@ pub struct WorldObject
 }
 impl WorldObject
 {
-    pub fn new_static_object( position: (f32, f32), dimensions: (u8, u8)) -> WorldObject
+    pub fn new_static_object( position: (f32, f32), dimensions: (u8, u8), permanent: bool) -> WorldObject
     {
+        let mut params = vec![ WorldObjectParams::PhysicsWorldParams { position: position, dimensions: dimensions } ];
+
+        if permanent
+        {
+            params.push(WorldObjectParams::PermanentWorldParams);
+        }
+
         WorldObject
         {
             uuid: PolyminiUUIDCtx::next(),
-            params: vec![ WorldObjectParams::PhysicsWorldParams { position: position, dimensions: dimensions } ],
+            params: params,
         }
     }
 
@@ -44,6 +56,83 @@ impl WorldObject
         {
             uuid: PolyminiUUIDCtx::next(),
             params: self.params.clone()
+        }
+    }
+}
+impl Serializable for WorldObject
+{
+    fn serialize(&self, ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        for p in &self.params
+        {
+            match p
+            {
+                &WorldObjectParams::PhysicsWorldParams { position: p, dimensions: d }  =>
+                {
+                    json_obj.insert("Position".to_owned(), Vector2::new(p.0, p.1).serialize(ctx));
+                    json_obj.insert("Dimensions".to_owned(), Vector2::new(d.0 as f32, d.1 as f32).serialize(ctx));
+                },
+                _ =>
+                {
+                    // TODO: Other Params
+                }
+            }
+        }
+        Json::Object(json_obj)
+    }
+}
+impl Deserializable for WorldObject
+{
+    fn new_from_json(json: &Json, ctx: &mut SerializationCtx) -> Option<WorldObject> 
+    {
+        debug!("Env::WorldObject::Serialization - {}", json.to_string()); 
+        match json
+        {
+            &Json::Object(ref json_obj) =>
+            {
+                let mut params = vec![];
+                if JsonUtils::verify_has_fields(json_obj, &vec!["Position".to_owned(), "Dimensions".to_owned()])
+                {
+                    let pos =  {
+                        let p = json_obj.get("Position").unwrap().as_object().unwrap();
+                        (p.get("x").unwrap().as_f64().unwrap() as f32,
+                         p.get("y").unwrap().as_f64().unwrap() as f32)
+                    };
+
+                    let dims =  {
+                        let d = json_obj.get("Dimensions").unwrap().as_object().unwrap();
+                        (d.get("x").unwrap().as_f64().unwrap() as u8,
+                         d.get("y").unwrap().as_f64().unwrap() as u8)
+                    };
+
+                    debug!("Env::WorldObject::Serialization adding Physics Params"); 
+                    params.push( WorldObjectParams::PhysicsWorldParams {
+                                    position: pos,   
+                                    dimensions: dims,   
+                                 });
+                }
+
+                debug!("Env::WorldObject::Serialization Params Len - {}", params.len()); 
+                if params.len() == 0
+                {
+                    None
+                }
+                else
+                {
+                    Some(WorldObject
+                        {
+                            params: params,
+                            uuid: PolyminiUUIDCtx::next(),
+                        })
+                }
+            },
+
+
+            _ =>
+            {
+                None
+            }
         }
     }
 }
@@ -109,6 +198,9 @@ pub struct Environment
 
     //
     pub objects: Vec<WorldObject>,
+
+    // 
+    permanent_objects: HashSet<PUUID>,
 }
 impl Environment
 {
@@ -125,6 +217,7 @@ impl Environment
             default_sensors: default_sensors,
             species_slots: species_slots,
             objects: vec![],
+            permanent_objects: HashSet::new(),
         };
         env
     }
@@ -198,13 +291,43 @@ impl Environment
                               default_sensors: default_sensors,
                               species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
                               objects: vec![],
+                              permanent_objects: HashSet::new(),
                             };
 
-                //TODO: This is temporary
-                env.add_static_object( (0.0, 0.0),   (dims.0 as u8, 1));
-                env.add_static_object( (0.0, 0.0),   (1, dims.1 as u8));
-                env.add_static_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8));
-                env.add_static_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1));
+                
+                match json_obj.get("PermanentObjects")
+                {
+                    Some(&Json::Array(ref objects)) =>
+                    {
+                        for o in objects
+                        {
+                            match WorldObject::new_from_json(o, &mut SerializationCtx::new())
+                            {
+                                Some(w_obj) =>
+                                {
+
+                                    debug!("Env::WorldObject::AddingPermanent Object to Env"); 
+                                    env.add_object(w_obj);
+                                }
+                                _ =>
+                                {
+                                    debug!("Env::WorldObject:: Could NOT deserialize Permanent Object");
+                                }
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+
+
+                if json_obj.get("AddBorder").unwrap_or(&Json::Null).as_boolean().unwrap_or(false)
+                {
+                    env.add_static_object( (0.0, 0.0),   (dims.0 as u8, 1), false);
+                    env.add_static_object( (0.0, 0.0),   (1, dims.1 as u8), false);
+                    env.add_static_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8), false);
+                    env.add_static_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1), false);
+                }
+
 
                 Some(env)
             },
@@ -251,6 +374,10 @@ impl Environment
                 {
                     self.physical_world.add_object(world_object.uuid, p, d);
                 },
+                WorldObjectParams::PermanentWorldParams =>
+                {
+                    self.permanent_objects.insert(world_object.uuid);
+                },
                 _ => {},
             }
         }
@@ -258,9 +385,10 @@ impl Environment
         self.objects.push(world_object);
     }
 
-    pub fn add_static_object(&mut self, position: (f32, f32), dimensions: (u8, u8))
+    pub fn add_static_object(&mut self, position: (f32, f32), dimensions: (u8, u8),
+                             permanent: bool)
     {
-        self.add_object(WorldObject::new_static_object(position, dimensions));
+        self.add_object(WorldObject::new_static_object(position, dimensions, permanent));
     }
 
     pub fn get_species_slots(&self) -> usize
@@ -300,8 +428,8 @@ impl Serializable for Environment
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
             //
-            let json_arr: pmJsonArray = self.default_sensors.iter().map(|s| { s.tag.serialize(ctx) }).collect();
-            json_obj.insert("DefaultSensors".to_owned(), Json::Array(json_arr));
+            let sensor_json_arr: pmJsonArray = self.default_sensors.iter().map(|s| { s.tag.serialize(ctx) }).collect();
+            json_obj.insert("DefaultSensors".to_owned(), Json::Array(sensor_json_arr));
 
             //
             let mut dimensions_json = pmJsonObject::new();
@@ -311,6 +439,17 @@ impl Serializable for Environment
 
             //
             json_obj.insert("SpeciesSlots".to_owned(), self.species_slots.to_json());
+
+            //
+            let mut perm_obj_json_arr = pmJsonArray::new();
+            for obj in &self.objects
+            {
+                if self.permanent_objects.contains(&obj.uuid)
+                {
+                    perm_obj_json_arr.push(obj.serialize(ctx));
+                }
+            }
+            json_obj.insert("PermanentObjects".to_owned(), Json::Array(perm_obj_json_arr));
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) &&

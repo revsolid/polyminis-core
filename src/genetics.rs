@@ -71,7 +71,7 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
         for ref mut ind in &mut self.individuals.population().iter_mut()
         {
             let mut ctx = PolyminiEvaluationCtx::new_from(evaluators.clone(),
-                                                          PolyminiFitnessAccumulator::new(instincts.clone()));
+                                                          PolyminiFitnessAccumulator::new(instincts.clone()), false);
             ind.evaluate(&mut ctx);
         }
         self.individuals.force_sort();
@@ -92,6 +92,7 @@ pub struct PGAConfig
     pub percentage_mutation: f32,
 
     // Evaluation Context
+    pub accumulates_over: bool, // Accumulate the result of the evaulation over several calls to evaluate
     pub fitness_evaluators: Vec<FitnessEvaluator>,
 
     // Genome Length
@@ -108,6 +109,7 @@ impl PGAConfig
             percentage_elitism:  0.8,
             percentage_mutation: 0.2,
             fitness_evaluators: vec![],
+            accumulates_over: false,
             genome_size: 4,
         }
     }
@@ -184,9 +186,11 @@ impl Deserializable for PGAConfig
                         vec![]
                     }
                 };
+
+                let ao = json_obj.get("AccumulatesOver").unwrap_or(&Json::Boolean(false)).as_boolean().unwrap();
  
                 Some(PGAConfig { population_size: ps,
-                                 percentage_elitism: pe, fitness_evaluators: fe,
+                                 percentage_elitism: pe, fitness_evaluators: fe, accumulates_over: ao,
                                  percentage_mutation: pm, genome_size: gs })
             },
             _ =>
@@ -328,7 +332,7 @@ mod test
                                FitnessEvaluator::DistanceTravelled { weight: 2.0 },
                                FitnessEvaluator::Shape { weight: 5.0 }];
         let cfg = PGAConfig { population_size: 50,
-                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators,
+                              percentage_elitism: 0.11, percentage_mutation: 0.12, fitness_evaluators: evaluators, accumulates_over: false,
                               genome_size: 8 };
         let ser_ctx = &mut SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
                               

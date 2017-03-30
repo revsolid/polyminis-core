@@ -13,7 +13,7 @@ use ::genetics::*;
 use ::serialization::*;
 use ::types::*;
 
-use std::cmp::{max};
+use std::cmp::{max, min};
 
 pub struct Perspective
 {
@@ -225,7 +225,12 @@ impl Control
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
-        let hid_len = (self.hidden_layer_size + other.hidden_layer_size) / 2;
+        // Make sure we pick the smaller size and then the bigger and that we at least have a
+        // correct range
+        let s_size = max(min(self.hidden_layer_size, other.hidden_layer_size) - 1, 1);
+        let b_size = min(max(self.hidden_layer_size, other.hidden_layer_size) + 1, s_size + 1);
+        let hid_len = rand_ctx.gen_range(s_size, b_size);
+
         let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);
         debug!("Crossing In to Hidden Layer - {}", self.nn[0].get_coefficients().len());
         let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_in_size, hid_len);

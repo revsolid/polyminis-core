@@ -110,6 +110,9 @@ pub struct Polymini
 
     // Statistics to evaluate the creature
     fitness_statistics: Vec<FitnessStatistic>,
+    restarts: u32,
+    // Historical data of the creature across restarts (Reset still whipes it)
+    fitness_statistics_historic: Vec<FitnessStatistic>,
 
     // Species-Agnostic Score
     raw_score: f32,
@@ -157,6 +160,8 @@ impl Polymini
                    ph: Ph::new(uuid, ph_range.0, ph_range.1),
                    stats: stats,
                    fitness_statistics: vec![],
+                   restarts: 0,
+                   fitness_statistics_historic: vec![],
                    raw_score: 0.0,
                    species_weighted_fitness: 0.0 }
 
@@ -252,6 +257,9 @@ impl Polymini
         let norm_pos = self.physics.get_normalized_pos();
         self.fitness_statistics.push(FitnessStatistic::FinalPosition((255.0*norm_pos.0) as u8,
                                                                      (255.0*norm_pos.1) as u8));
+
+        self.restarts += 1;
+        self.dead = false;
     }
 
     pub fn reset(&mut self, random_ctx: &mut PolyminiRandomCtx, placement_func: &PlacementFunction)
@@ -261,6 +269,7 @@ impl Polymini
         self.set_fitness(0.0);
         self.set_raw(0.0);
         self.fitness_statistics.clear();
+        self.fitness_statistics_historic.clear();
     }
 
     pub fn die(&mut self, death_context: &DeathContext)
@@ -414,8 +423,17 @@ impl Serializable for Polymini
             let mut stats_json_obj = pmJsonObject::new();
             let mut stats_dict = HashMap::new();
 
+            let stats = if self.fitness_statistics_historic.len() < self.fitness_statistics.len()
+                {
+                    &self.fitness_statistics
+                }
+                else
+                {
+                    &self.fitness_statistics_historic 
+                };
+
             trace!("Len of Statistics: {}", self.fitness_statistics.len());
-            for stat in &self.fitness_statistics
+            for stat in stats
             {
                 match stats_dict.entry(stat)
                 {
@@ -502,7 +520,6 @@ impl PolyminiGAIndividual for Polymini
             {
                 debug!(" using {} statistics", self.fitness_statistics.len());
 
-
                 self.fitness_statistics.push(FitnessStatistic::TotalCells(self.stats.total_cells));
 
                 let norm_pos = self.physics.get_normalized_pos();
@@ -516,13 +533,36 @@ impl PolyminiGAIndividual for Polymini
                 }
 
                 ctx.evaluate(&self.fitness_statistics);
-                self.set_raw(ctx.get_raw());
+
+                let mut raw = ctx.get_raw();
                 //TODO: Get weights from somewhere
-                self.set_fitness(ctx.get_raw());
+                let mut fitness = ctx.get_raw();
+                if ctx.accumulates_over()
+                {
+                    // This is a bit more convoluted than it should, but basically,
+                    // in a case where we'd want to run the same species through several
+                    // scenarios and then run them through selection, it is necessary to accumulate
+                    // the fitness over from scenario to scenario and wipethe statistics after
+                    // we're done evaluating or we might end up double scoring some things.
+                    // Unfortunately this leaves us without fitness statistics to debug with...
+                    raw += self.raw();
+                    fitness += self.fitness();
+
+                    raw     /= (self.restarts + 2) as f32;
+                    fitness /= (self.restarts + 2) as f32;
+                   
+                    // .. so we have to do this 'historic' data... might actually be good for
+                    // data porn...
+                    self.fitness_statistics_historic.append(&mut self.fitness_statistics);
+                    self.fitness_statistics.clear();
+                }
+
+                self.set_raw(raw);
+                self.set_fitness(fitness);
             },
             None =>
             {
-                panic!("");
+                panic!("Polymini::Evaluation Expected: PolyminiEvaluationCtx passed other type");
             }
         }
         info!("  Result: {}", self.raw());

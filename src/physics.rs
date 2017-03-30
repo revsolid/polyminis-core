@@ -3,7 +3,7 @@
 extern crate nalgebra;
 extern crate ncollide;
 
-use self::nalgebra::{Isometry2,  Point2, Vector1, Vector2, zero};
+use self::nalgebra::{Isometry2,  Point2, Vector1, zero};
 use self::nalgebra::{Translation, Rotation, Rotation2, RotationTo};
 use self::nalgebra::{distance};
 
@@ -13,6 +13,9 @@ use self::ncollide::world::{CollisionWorld, CollisionWorld2,
                             CollisionGroups, CollisionObject2, GeometricQueryType};
 //
 //
+//
+
+pub use self::nalgebra::Vector2 as Vector2;
 
 use std::f32::consts;
 use std::cell::{Cell as std_Cell, RefCell as std_RefCell};
@@ -235,6 +238,7 @@ fn serialize_vector(v: Vector2<f32>) -> Json
     (v.x, v.y).to_json()
 }
 
+//
 fn ncoll_orientation_sim_orientation(rotation: &Rotation2<f32>)-> u8
 {
     let rot = (rotation.rotation().x * 100.0).round() / 100.0;
@@ -685,8 +689,8 @@ impl PhysicsWorld
         else
         {
             dimensions_1 = Vector2::new(one.data.dimensions.get().y, one.data.dimensions.get().x);
-            h_1 = dimensions_1.y;
-            v_1 = dimensions_1.x;
+            h_1 = dimensions_1.x;
+            v_1 = dimensions_1.y;
         };
 
         let orientation_2 = ncoll_orientation_sim_orientation(&other.position.rotation);
@@ -702,8 +706,8 @@ impl PhysicsWorld
         else
         {
             dimensions_2 = Vector2::new(other.data.dimensions.get().y, other.data.dimensions.get().x);
-            h_2 = dimensions_2.y;
-            v_2 = dimensions_2.x;
+            h_2 = dimensions_2.x;
+            v_2 = dimensions_2.y;
         };
 
         let range_x = (h_1 + h_2) / 2.0;
@@ -715,8 +719,8 @@ impl PhysicsWorld
                        Vector2::new(other.data.corner.get().0 as f32, other.data.corner.get().1 as f32);
 
         let disp_1 = one.position.rotation *
-                     Vector2::new(one.data.dimensions.get().x / 2.0 + one.data.corner.get().0 as f32,
-                                  one.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
+                     Vector2::new(h_1 / 2.0 + one.data.corner.get().0 as f32,
+                                  v_1 / 2.0 + one.data.corner.get().1 as f32);
 
 
         let adj_position1 = Vector2::new(one.position.translation.x + disp_1.x,
@@ -724,8 +728,8 @@ impl PhysicsWorld
 
 
         let disp_2 = other.position.rotation *
-                     Vector2::new(other.data.dimensions.get().x / 2.0 + other.data.corner.get().0 as f32,
-                                  other.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
+                     Vector2::new(h_2 / 2.0 + other.data.corner.get().0 as f32,
+                                  v_2 / 2.0 + other.data.corner.get().1 as f32);
 
 
         let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
@@ -776,12 +780,6 @@ impl PhysicsWorld
         //
         let mut loops = 0;
         let max_loops = if placement { 500 } else { 200 };
-
-        let mut phys_capture: Vec<Json>;
-        #[cfg(physics_capture)]
-        {
-            phys_capture = vec![];
-        }
 
         loop
         {
