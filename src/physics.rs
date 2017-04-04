@@ -676,6 +676,24 @@ impl PhysicsWorld
 
     fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>, dump: bool) -> bool
     {
+        let corn_getter = |ob: &CollisionObject2<f32, PolyminiPhysicsData> |
+        {
+            let minx = ob.data.corner.get().0;
+            let miny = ob.data.corner.get().1;
+            let maxx = ob.data.dimensions.get().x as i8 + minx;
+            let maxy = ob.data.dimensions.get().y as i8 + miny;
+
+            let mut corners = [(0,0); 4];
+            corners[0] = (   minx,       miny);
+            corners[1] = (   miny,       minx);
+            corners[2] = (-1*maxx,       miny);
+            corners[3] = (-1*maxy,       -maxx);
+
+            let orientation = ncoll_orientation_sim_orientation(&ob.position.rotation);
+            let corner = corners[orientation as usize];
+            Vector2::new(corner.0 as f32, corner.1 as f32)
+        };
+
         let orientation_1 = ncoll_orientation_sim_orientation(&one.position.rotation);
         let dimensions_1;
         let h_1;
@@ -713,23 +731,18 @@ impl PhysicsWorld
         let range_x = (h_1 + h_2) / 2.0;
         let range_y = (v_1 + v_2) / 2.0;
 
-        let corner_1 = one.position.rotation *
-                       Vector2::new(one.data.corner.get().0 as f32, one.data.corner.get().1 as f32);
-        let corner_2 = other.position.rotation *
-                       Vector2::new(other.data.corner.get().0 as f32, other.data.corner.get().1 as f32);
+        let corner_1 = corn_getter(one);
+        let corner_2 = corn_getter(other);
 
-        let disp_1 = one.position.rotation *
-                     Vector2::new(h_1 / 2.0 + one.data.corner.get().0 as f32,
-                                  v_1 / 2.0 + one.data.corner.get().1 as f32);
-
+        let disp_1 = Vector2::new(h_1 / 2.0 + corner_1.x,
+                                  v_1 / 2.0 + corner_1.y);
 
         let adj_position1 = Vector2::new(one.position.translation.x + disp_1.x,
                                          one.position.translation.y + disp_1.y);
 
 
-        let disp_2 = other.position.rotation *
-                     Vector2::new(h_2 / 2.0 + other.data.corner.get().0 as f32,
-                                  v_2 / 2.0 + other.data.corner.get().1 as f32);
+        let disp_2 = Vector2::new(h_2 / 2.0 + corner_2.x,
+                                  v_2 / 2.0 + corner_2.y);
 
 
         let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
@@ -738,34 +751,52 @@ impl PhysicsWorld
 
         let d_x = (adj_position1.x - adj_position2.x).abs();
         let d_y = (adj_position1.y - adj_position2.y).abs();
-     
-
-        if dump
-        {
-            warn!("Potential Collision:");
-            warn!("Object 1 {}", one.uid);
-            warn!("Object1 Pos(ncollide) {} Orientation(int) {}", one.position, orientation_1);
-            warn!("Object1 Dimensions {} Rotated {}", one.data.dimensions.get(), dimensions_1);
-            warn!("Object1 Corner {:?} Rotated {:?}", one.data.corner.get(), corner_1);
-            warn!("Object1 Adjusted Position {}", adj_position1);
-
-            warn!("Object 2 {}", other.uid);
-            warn!("Object2 Pos(ncollide) {} Orientation(int) {}", other.position, orientation_2);
-            warn!("Object2 Dimensions {} Rotated {}", other.data.dimensions.get(), dimensions_2);
-            warn!("Object2 Corner {:?} Rotated {:?}", other.data.corner.get(), corner_2);
-            warn!("Object2 Adjusted Position {}", adj_position2);
-
-            warn!("Delta X: {} Delta Y:{} Range X: {} Range Y: {}", d_x, d_y, range_x, range_y);
-        }
-        if ((d_x - range_x).abs() < 0.01 ||
+      
+        let res = if ((d_x - range_x).abs() < 0.01 ||
             (d_y - range_y).abs() < 0.01)
         {
-           return true; 
+           true
+        }
+        else
+        {
+           false
+        };
+
+        if dump 
+        {
+            warn!("
+            \n
+Collision - Just Touching: {}
+    Object 1 {}
+    Object1 Pos{}  Orientation(int) {}
+    Object1 Dimensions {} Rotated {}
+    Object1 Corner {:?} Rotated {:?}
+    Object1 Adjusted Position {}
+    
+    Object 2 {}
+    Object2 Pos {} Orientation(int) {}
+    Object2 Dimensions {} Rotated {}
+    Object2 Corner {:?} Rotated {:?}
+    Object2 Adjusted Position {}
+
+    Delta X: {} Delta Y:{} Range X: {} Range Y: {}",
+            res,
+            one.uid,
+            one.position.translation, orientation_1,
+            one.data.dimensions.get(), dimensions_1,
+            one.data.corner.get(), corner_1,
+            adj_position1,
+
+            other.uid,
+            other.position.translation, orientation_2,
+            other.data.dimensions.get(), dimensions_2,
+            other.data.corner.get(), corner_2,
+            adj_position2, 
+
+            d_x, d_y, range_x, range_y);
         }
 
-
-
-        return false;
+        return res;
     }
 
     // NOTE:
@@ -1188,8 +1219,7 @@ mod test
         physical_world.add_object(2, (0.0, 0.0), (2, 2));
         let mut physics = Physics::new_with_corner(1, (4, 4), -5.0, 0.0, 0, (-2, 0)); 
         physical_world.add(&mut physics);
-        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
-                                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
@@ -1197,8 +1227,7 @@ mod test
 
         for i in 0..10
         {
-            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 0.2, 0.0)),
-                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0))],
+            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0))],
                            &mut physical_world);
             physical_world.step();
             physics.update_state(&physical_world);

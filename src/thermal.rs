@@ -28,6 +28,10 @@ impl Thermo
 
     pub fn act_on(&self, position: (f32, f32), actions: &ActionList, thermo_world: &mut ThermoWorld)
     {
+
+        // Find actions related to thermal
+
+
         thermo_world.apply(self.uuid, Action::NoAction);
     }
 
@@ -56,16 +60,18 @@ impl Serializable for Thermo
     fn serialize(&self, ctx: &mut SerializationCtx) -> Json
     {
         let mut json_obj = pmJsonObject::new();
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC)
+
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
+        {
+            json_obj.insert("Current".to_owned(), Json::F64(self.current as f64));
+            json_obj.insert("InRange".to_owned(), Json::Boolean(self.inside_range()));
+        }
+        else
         {
             json_obj.insert("Min".to_owned(), Json::F64(self.min as f64));
             json_obj.insert("Max".to_owned(), Json::F64(self.max as f64));
         }
 
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DYNAMIC)
-        {
-            json_obj.insert("Current".to_owned(), Json::F64(self.current as f64));
-        }
         Json::Object(json_obj)
     }
 }
@@ -210,7 +216,7 @@ impl ThermoWorld
     {
         if (position.0 < 0.0 || position.1 < 0.0)
         {
-            println!("{:?}", position);
+            debug!("{:?}", position);
         }
 
         let mut x =

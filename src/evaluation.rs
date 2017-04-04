@@ -231,6 +231,30 @@ impl FitnessEvaluator
             }
         }
     }
+
+    fn get_associated_instinct(&self) -> Instinct
+    {
+        match *self
+        {
+            FitnessEvaluator::OverallMovement   { weight: _ }   |
+            FitnessEvaluator::DistanceTravelled { weight: _ }   |
+            FitnessEvaluator::TargetPosition    { weight: _,
+                                                  pos: _ } =>
+            {
+                Instinct::Nomadic
+            },
+
+            FitnessEvaluator::Shape { weight: _ } =>
+            {
+                Instinct::Hoarding
+            },
+
+            _ =>
+            {
+                Instinct::Basic
+            }
+        }
+    }
 }
 impl Serializable for FitnessEvaluator
 {

@@ -386,11 +386,12 @@ impl SimulationEpoch
     // TODO: This should, in some way, destroy *self* epoch
     pub fn advance(&mut self) -> SimulationEpoch
     {
-        debug!("Advancing Epoch - Species");
+        println!("Advancing Epoch - Species");
         for species in &mut self.species
         {
             species.advance_epoch();
         }
+        println!("Advancing Epoch - Done Advancing Species");
 
         let mut new_epoch_species = vec![];
         new_epoch_species.append(&mut self.species);
@@ -398,12 +399,12 @@ impl SimulationEpoch
         // TODO: Advance the Environment's epoch and copy it over
         let mut new_epoch = SimulationEpoch::new_restartable(self.environment.advance_epoch(), self.max_steps, self.restarts);
 
-        debug!("Advancing Epoch - Reinserting Species");
+        println!("Advancing Epoch - Reinserting Species");
         for n_s in new_epoch_species
         {
             new_epoch.add_species(n_s);
         }
-        debug!("Advancing Epoch - Done Reinserting Species");
+        println!("Advancing Epoch - Done Reinserting Species");
 
         new_epoch
     }
@@ -521,6 +522,9 @@ impl SimulationEpoch
 
         sp.insert(SensorTag::Orientation, perspective.orientation.to_float());
 
+        sp.insert(SensorTag::TimeGlobal,  (self.steps as f32 / (self.max_steps * self.substeps) as f32));
+        sp.insert(SensorTag::TimeSubStep, (self.steps % self.substeps) as f32 / self.substeps as f32);
+
         // Go through the environment and Polyminis filling up
         // the sensory payload
         sp
@@ -528,6 +532,7 @@ impl SimulationEpoch
 
     pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig, Box<PlacementFunction>)>)
     {
+        let original_env = self.environment.clone();
         let mut random_ctx = PolyminiRandomCtx::from_seed([3,1,4,3], "Solo Run".to_owned());
         for &(ref e, ref cfg, ref p_func) in envs
         {
@@ -547,8 +552,8 @@ impl SimulationEpoch
                     let added_to_env;
                     {
                         let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
-                        polymini.get_physics_mut().reset(&mut random_ctx, &(**p_func));
-                        added_to_env = self.environment.add_individual(polymini);
+                        polymini.restart(&mut random_ctx, &(**p_func));
+                        added_to_env = self.environment.add_individual_force_pos(polymini);
                         if (!added_to_env)
                         {
                             polymini.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
@@ -557,10 +562,11 @@ impl SimulationEpoch
                         debug!("Simulation::SoloRun{} Added polymini with id {} - {}", line!(), polymini.get_id(), added_to_env);
                     }
 
-                    'steps: for _ in 0..self.max_steps
+                    'steps: for step in 0..self.max_steps
                     {
                         'sub_steps: for ss in 0..self.substeps
                         {
+                            self.steps = step * self.substeps + ss;
                             let perspective;
                             {
                                 let polymini = self.species[s].get_generation().get_individual(i);
@@ -599,6 +605,7 @@ impl SimulationEpoch
                 self.species[s].evaluate();
             }
         }
+        self.environment = original_env;
     }
 }
 

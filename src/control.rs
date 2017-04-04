@@ -246,13 +246,13 @@ impl Control
         
         let delta_hl: i32 = random_ctx.gen_range(-2, 2);
 
-        let new_hid_size = if (self.hidden_layer_size as i32) + delta_hl >= 1
+        let new_hid_size = if (self.hidden_layer_size as i32 + delta_hl) >= 1
         {
             ((self.hidden_layer_size as i32) + delta_hl) as usize
         }
         else
         {
-            1
+            random_ctx.gen_range(1,3) 
         };
 
         let new_in_size =  Sensor::get_total_cardinality(&new_sensor_list);
@@ -449,7 +449,7 @@ impl<'a> WeightsGenerator for RandomWeightsGenerator<'a>
 pub struct MutateWeightsGenerator<'a>
 {
     rand_ctx: &'a mut PolyminiRandomCtx,
-    has_mutated: bool,
+    mutations: usize,
     internal_generator: UpdateWeightsGenerator,
 }
 impl<'a> MutateWeightsGenerator<'a>
@@ -459,7 +459,8 @@ impl<'a> MutateWeightsGenerator<'a>
     {
         debug!("Mutation Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
         let uwg = UpdateWeightsGenerator::new(ctx, l1, old_in_size, old_out_size, new_in_size, new_out_size);
-        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false,  internal_generator: uwg }
+        let muts = ctx.gen_range(2, 5);
+        MutateWeightsGenerator { rand_ctx: ctx, mutations: muts,  internal_generator: uwg }
     }
 }
 impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
@@ -467,12 +468,12 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
     fn generate(&mut self) -> f32
     {
         let mut to_ret = self.internal_generator.generate();
-        if !self.has_mutated
+        if self.mutations > 0
         {
             if self.rand_ctx.gen_range(0.0, 1.0) < 1.0  / (self.internal_generator.bias_values.len() + self.internal_generator.weight_values.len()) as f32
             {
                 to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
-                self.has_mutated = true;
+                self.mutations -= 1;
             }
         }
         debug!("Mutate Generator - {}", to_ret);

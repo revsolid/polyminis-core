@@ -112,13 +112,16 @@ pub struct Polymini
     fitness_statistics: Vec<FitnessStatistic>,
     restarts: u32,
     // Historical data of the creature across restarts (Reset still whipes it)
-    fitness_statistics_historic: Vec<FitnessStatistic>,
+    fitness_statistics_historic: HashMap<u32, Vec<FitnessStatistic>>,
 
     // Species-Agnostic Score
     raw_score: f32,
 
     // raw_score scaled by the Instintcts Tuning  (aka. Fitness)
     species_weighted_fitness: f32,
+
+    // Species ID
+    species_uuid: PUUID,
 }
 impl Polymini
 {
@@ -161,9 +164,10 @@ impl Polymini
                    stats: stats,
                    fitness_statistics: vec![],
                    restarts: 0,
-                   fitness_statistics_historic: vec![],
+                   fitness_statistics_historic: HashMap::new(),
                    raw_score: 0.0,
-                   species_weighted_fitness: 0.0 }
+                   species_weighted_fitness: 0.0,
+                   species_uuid: 0 }
 
     }
 
@@ -270,6 +274,7 @@ impl Polymini
         self.set_raw(0.0);
         self.fitness_statistics.clear();
         self.fitness_statistics_historic.clear();
+        self.restarts = 0;
     }
 
     pub fn die(&mut self, death_context: &DeathContext)
@@ -419,43 +424,39 @@ impl Serializable for Polymini
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS)
         {
             json_obj.insert("Stats".to_owned(), self.stats.serialize(ctx));
+
+
             //
-            let mut stats_json_obj = pmJsonObject::new();
-            let mut stats_dict = HashMap::new();
-
-            let stats = if self.fitness_statistics_historic.len() < self.fitness_statistics.len()
-                {
-                    &self.fitness_statistics
-                }
-                else
-                {
-                    &self.fitness_statistics_historic 
-                };
-
-            trace!("Len of Statistics: {}", self.fitness_statistics.len());
-            for stat in stats
+            let mut scenario_json_obj = pmJsonObject::new();
+            for (scenario, stats) in self.fitness_statistics_historic.iter() 
             {
-                match stats_dict.entry(stat)
+                let mut stats_json_obj = pmJsonObject::new();
+                let mut stats_dict = HashMap::new();
+
+                //let stats = self.fitness_statistics_historic.get(&r).unwrap();
+                for stat in stats
                 {
-                    Entry::Occupied(mut o) =>
+                    match stats_dict.entry(stat)
                     {
-                        let v = *o.get();
-                        o.insert( v + 1 );
-                    },
-                    Entry::Vacant(mut o) =>
-                    {
-                        o.insert( 1 );
+                        Entry::Occupied(mut o) =>
+                        {
+                            let v = *o.get();
+                            o.insert( v + 1 );
+                        },
+                        Entry::Vacant(mut o) =>
+                        {
+                            o.insert( 1 );
+                        }
                     }
                 }
-            }
 
-            for (k,v) in stats_dict.iter()
-            {
-                stats_json_obj.insert(k.to_string(), v.to_json());
+                for (k,v) in stats_dict.iter()
+                {
+                    stats_json_obj.insert(k.to_string(), v.to_json());
+                }
+                scenario_json_obj.insert(format!("{}", scenario), Json::Object(stats_json_obj));
             }
-
-            
-            json_obj.insert("FitnessStatistics".to_owned(), Json::Object(stats_json_obj));
+            json_obj.insert("FitnessStatistics".to_owned(), Json::Object(scenario_json_obj));
         }
 
         Json::Object(json_obj)
@@ -537,25 +538,20 @@ impl PolyminiGAIndividual for Polymini
                 let mut raw = ctx.get_raw();
                 //TODO: Get weights from somewhere
                 let mut fitness = ctx.get_raw();
+
                 if ctx.accumulates_over()
                 {
-                    // This is a bit more convoluted than it should, but basically,
-                    // in a case where we'd want to run the same species through several
-                    // scenarios and then run them through selection, it is necessary to accumulate
-                    // the fitness over from scenario to scenario and wipethe statistics after
-                    // we're done evaluating or we might end up double scoring some things.
-                    // Unfortunately this leaves us without fitness statistics to debug with...
                     raw += self.raw();
                     fitness += self.fitness();
 
-                    raw     /= (self.restarts + 2) as f32;
-                    fitness /= (self.restarts + 2) as f32;
-                   
-                    // .. so we have to do this 'historic' data... might actually be good for
-                    // data porn...
-                    self.fitness_statistics_historic.append(&mut self.fitness_statistics);
-                    self.fitness_statistics.clear();
+                    raw     /= (self.restarts + 1) as f32;
+                    fitness /= (self.restarts + 1) as f32;
                 }
+
+                // Save the fitness stats into the Historic Performance and clear the
+                // 'Per-Scenario' list
+                self.fitness_statistics_historic.insert(self.restarts, self.fitness_statistics.clone());
+                self.fitness_statistics.clear();
 
                 self.set_raw(raw);
                 self.set_fitness(fitness);

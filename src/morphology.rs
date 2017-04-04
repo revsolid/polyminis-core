@@ -610,7 +610,7 @@ impl Morphology
 
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)
     {
-        for i in 0..random_ctx.gen_range(1, 8)
+        for i in 0..random_ctx.gen_range(1, max(self.original_chromosome.len() / 2, 2))
         {
             let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
             let allele_to_mutate = random_ctx.gen_range(0, 4);

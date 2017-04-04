@@ -168,24 +168,24 @@ mod test
         master_translation_table.insert( (TraitTier::TierI, 6), PolyminiTrait::PolyminiActuator(ActuatorTag::MoveVertical));
 
         let mut active_table_1 = HashSet::new();
-        active_table_1.insert( (TraitTier::TierI, 8) );
         active_table_1.insert( (TraitTier::TierI, 7) );
         active_table_1.insert( (TraitTier::TierI, 6) );
 
         let mut active_table_2 = HashSet::new();
-        active_table_2.insert( (TraitTier::TierI, 8) );
         active_table_2.insert( (TraitTier::TierI, 7) );
         active_table_2.insert( (TraitTier::TierI, 6) );
 
         let mut active_table_3 = HashSet::new();
-        active_table_3.insert( (TraitTier::TierI, 8) );
         active_table_3.insert( (TraitTier::TierI, 7) );
         active_table_3.insert( (TraitTier::TierI, 6) );
 
         let default_sensors = vec![ Sensor::new(SensorTag::PositionX, 1),
                                     Sensor::new(SensorTag::PositionY, 1),
                                     Sensor::new(SensorTag::Orientation, 1),
-                                    Sensor::new(SensorTag::LastMoveSucceded, 1)];
+                                    Sensor::new(SensorTag::LastMoveSucceded, 1),
+                                    Sensor::new(SensorTag::TimeGlobal, 1),
+                                    Sensor::new(SensorTag::TimeSubStep, 1),
+                                    ];
 
         let evaluators = vec![ FitnessEvaluator::OverallMovement { weight: 0.75 },
                                FitnessEvaluator::DistanceTravelled { weight: 0.75 },
@@ -199,8 +199,8 @@ mod test
         let translation_table_species_3 = TranslationTable::new_from(&master_translation_table, &active_table_3);
 
 
-        let mut env = Environment::new(3, default_sensors.clone());
 
+        let mut env = Environment::new(3, default_sensors.clone());
         env.add_static_object( (0.0, 0.0),   (50, 1), false);
         env.add_static_object( (0.0, 0.0),   (1, 50), false);
         env.add_static_object( (49.0, 0.0),  (1, 50), false);
@@ -216,16 +216,18 @@ mod test
                               percentage_elitism: 0.2, percentage_mutation: 0.35, fitness_evaluators: evaluators, accumulates_over: false,
                               genome_size: 4 };
 
-        let mut epoch = SimulationEpoch::new_restartable(env, steps_per_epoch as usize, 2);
+        let mut empty = Environment::new_with_dimensions(3, default_sensors.clone(), (5000.0, 5000.0));
+        let mut epoch = SimulationEpoch::new_restartable(empty.clone(), steps_per_epoch as usize, 2);
 
         trace!("Creating Species");
         let mut i = 0;
-        for tt in vec![translation_table_species_1]//, translation_table_species_2, translation_table_species_3]
+        for tt in vec![translation_table_species_1, translation_table_species_2, translation_table_species_3]
         {
             let ss = Species::new_from(format!("Test Species {}", i), tt,
                                        &epoch.get_environment().default_sensors, cfg.clone(),
                                        Box::new( | ctx: &mut PolyminiRandomCtx | {
-                                           (11.0, 11.0)
+                                               ( (ctx.gen_range(5.0, 4950.0) as f32).floor(),
+                                                 (ctx.gen_range(5.0, 4950.0) as f32).floor())
                                        }));
 
             trace!("Adding Species");
@@ -300,14 +302,14 @@ mod test
         let evals_4 = vec![ FitnessEvaluator::OverallMovement { weight: 0.75 },
                             FitnessEvaluator::DistanceTravelled { weight: 1.5 },
                             FitnessEvaluator::Alive { weight: 1.0 },
-                            FitnessEvaluator::Shape { weight: 2.0 },
+                            FitnessEvaluator::Shape { weight: 5.0 },
                             FitnessEvaluator::PositionsVisited { weight: 2.5 },
                           ];
         cfg_4.fitness_evaluators = evals_4;
 
 
         // TODO: Make this an easy to parameterize thing
-        let total_epochs = 100;
+        let total_epochs = 50;
         let mut serialization_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG);
         let outer_now = Instant::now();
         println!("Starting {} Epochs", total_epochs);
@@ -316,22 +318,37 @@ mod test
             let now = Instant::now();
             println!("Starting Solo Run");
             {
-                let new_env = sim.get_epoch().get_environment().clone();
                 sim.get_epoch_mut().solo_run(&vec![
-                                                    (new_env.clone(), cfg.clone(),
+                                                    (env.clone(), cfg.clone(),
                                                      Box::new( | ctx: &mut PolyminiRandomCtx |
                                                      {
                                                          (16.0, 16.0)
                                                        // ( (ctx.gen_range(15.0, 20.0) as f32).floor(),
                                                        // (ctx.gen_range(15.0, 20.0) as f32).floor())
                                                      })),
-                                                    (new_env.clone(), cfg.clone(),
+                                                    (env.clone(), cfg.clone(),
                                                      Box::new( | ctx: &mut PolyminiRandomCtx |
                                                      {
                                                          (31.0, 31.0)
                                                        // ( (ctx.gen_range(30.0, 35.0) as f32).floor(),
                                                        //  (ctx.gen_range(30.0, 35.0) as f32).floor())
                                                      })),
+                                                    (env.clone(), cfg.clone(),
+                                                     Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                     {
+                                                         (16.0, 31.0)
+                                                       // ( (ctx.gen_range(15.0, 20.0) as f32).floor(),
+                                                       // (ctx.gen_range(15.0, 20.0) as f32).floor())
+                                                     })),
+                                                    (env.clone(), cfg.clone(),
+                                                     Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                     {
+                                                         (31.0, 16.0)
+                                                       // ( (ctx.gen_range(15.0, 20.0) as f32).floor(),
+                                                       // (ctx.gen_range(15.0, 20.0) as f32).floor())
+                                                     })),
+
+
                     
                                                      (env2.clone(), cfg_2.clone(),
                                                      Box::new( | ctx: &mut PolyminiRandomCtx |
@@ -347,6 +364,7 @@ mod test
                                                        //( (ctx.gen_range(38.0, 42.0) as f32).floor(),
                                                        //(ctx.gen_range(38.0, 42.0) as f32).floor())
                                                      })),
+
                                                      (env4.clone(), cfg_4.clone(),
                                                      Box::new( | ctx: &mut PolyminiRandomCtx |
                                                      {
@@ -355,12 +373,6 @@ mod test
                                                      ]);
             }
             println!("After Solo Run- {}s {}ms", now.elapsed().as_secs(), now.elapsed().subsec_nanos() / 1000000);
-            trace!("{}", sim.get_epoch()
-                        .serialize(&mut serialization_ctx)); 
-
-            trace!("After Eval");
-            trace!("{}", sim.get_epoch()
-                        .serialize(&mut serialization_ctx));
 
             for s in sim.get_epoch().get_species()
             {
@@ -369,10 +381,9 @@ mod test
 
             if i < total_epochs - 1
             {
+                let adv_now = Instant::now();
                 sim.advance_epoch();
-                trace!("After Advancing Epoch");
-                trace!("{}", sim.get_epoch()
-                       .serialize(&mut serialization_ctx));
+                println!("After Advancing Epoch {}s", adv_now.elapsed().as_secs());
             }
         }
 

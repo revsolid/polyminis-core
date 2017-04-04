@@ -15,6 +15,21 @@ use std::hash::{ Hash, Hasher, SipHasher };
 
 pub type IndividualFilterFunction = Fn(&pmJsonArray, &TranslationTable, &Vec<Sensor>) -> Vec<Polymini>;
 
+pub struct SpeciesStats
+{
+}
+impl SpeciesStats
+{
+}
+impl Serializable for SpeciesStats
+{
+    fn serialize(&self,  ctx: &mut SerializationCtx) -> Json
+    {
+        Json::Null
+    }
+}
+
+
 pub struct Species
 {
     name: String,
@@ -24,6 +39,7 @@ pub struct Species
     accumulated_score: f32,
     percentage_population: f32,
     instinct_weights: HashMap<Instinct, f32>,
+    stats: SpeciesStats,
 }
 impl Species
 {
@@ -50,6 +66,7 @@ impl Species
                   accumulated_score: 0.0,
                   percentage_population: 0.0,
                   instinct_weights: HashMap::new(),
+                  stats: SpeciesStats {}
                 }
     }
 
@@ -68,7 +85,7 @@ impl Species
             ((hash_v >> 32) & 0xFFFFFFFF) as u32,
             (hash_v         & 0xFFFFFFFF) as u32,
             name.len()                    as u32,
-            3141,
+            3151,
         ], name.clone());
 
         for i in 0..pgaconfig.population_size
@@ -95,6 +112,7 @@ impl Species
                   accumulated_score: 0.0,
                   percentage_population: 0.0,
                   instinct_weights: HashMap::new(),
+                  stats: SpeciesStats{},
                 }
     }
 
@@ -141,7 +159,7 @@ impl Species
                     ((hash_v >> 32) & 0xFFFFFFFF) as u32,
                     (hash_v         & 0xFFFFFFFF) as u32,
                     name.len()                    as u32,
-                    3141,
+                    3151,
                 ], name.clone());
 
                 match json_obj.get("InstinctWeights")
@@ -201,6 +219,7 @@ impl Species
                                    accumulated_score: 0.0,
                                    percentage_population: percentage,
                                    instinct_weights: iw,
+                                   stats: SpeciesStats{}
                                  };
                     s.restart();
 

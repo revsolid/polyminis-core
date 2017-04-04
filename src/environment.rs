@@ -207,6 +207,11 @@ impl Environment
     pub fn new(species_slots: usize, default_sensors: Vec<Sensor>) -> Environment
     {
         let dimensions = KENVIRONMENT_DIMENSIONS;
+        Environment::new_with_dimensions(species_slots, default_sensors, dimensions)
+    }
+
+    pub fn new_with_dimensions(species_slots: usize, default_sensors: Vec<Sensor>, dimensions: (f32, f32)) -> Environment
+    {
         let mut env = Environment
         {
             dimensions: dimensions,
@@ -356,6 +361,18 @@ impl Environment
         }
     }
 
+    pub fn add_individual_force_pos(&mut self, polymini: &mut Polymini) -> bool
+    {
+        let pos = polymini.get_physics().get_pos();
+
+        self.add_individual(polymini) && {
+            let n_spos = polymini.get_physics().get_starting_pos();
+            let dx = (pos.0 - n_spos.0).abs();
+            let dy = (pos.1 - n_spos.1).abs();
+            (dx <= 3.0 && dy <= 3.0)
+        }
+    }
+
     pub fn remove_individual(&mut self, polymini: &mut Polymini) -> bool
     {
         let mut res = false;
@@ -398,8 +415,9 @@ impl Environment
 
     pub fn advance_epoch(&self) -> Environment
     {
-        let mut to_ret = Environment::new(self.species_slots,
-                                          self.default_sensors.clone());
+        let mut to_ret = Environment::new_with_dimensions(self.species_slots,
+                                          self.default_sensors.clone(),
+                                          self.dimensions);
 
         for o in &self.objects
         {
@@ -465,8 +483,9 @@ impl Clone for Environment
 {
     fn clone(&self) -> Environment
     {
-        let mut to_ret = Environment::new(self.species_slots,
-                                          self.default_sensors.clone());
+        let mut to_ret = Environment::new_with_dimensions(self.species_slots,
+                                                          self.default_sensors.clone(),
+                                                          self.dimensions);
 
         for o in &self.objects
         {
