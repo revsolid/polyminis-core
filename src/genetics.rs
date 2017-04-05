@@ -66,12 +66,13 @@ impl<T: PolyminiGAIndividual> PolyminiGeneration<T>
         self.individuals.raw_score_iterator()
     }
 
-    pub fn evaluate(&mut self, evaluators: &Vec<FitnessEvaluator>, instincts: &Vec<Instinct>)
+    pub fn evaluate(&mut self, evaluators: &Vec<FitnessEvaluator>, instincts: &Vec<Instinct>,
+                    instinct_weights: &HashMap<Instinct,f32>, accumulates: bool)
     {
         for ref mut ind in &mut self.individuals.population().iter_mut()
         {
             let mut ctx = PolyminiEvaluationCtx::new_from(evaluators.clone(),
-                                                          PolyminiFitnessAccumulator::new(instincts.clone()), false);
+                                                          PolyminiFitnessAccumulator::new(instincts.clone()), instinct_weights.clone(), accumulates);
             ind.evaluate(&mut ctx);
         }
         self.individuals.force_sort();
@@ -251,10 +252,12 @@ impl<T: PolyminiGAIndividual> PolyminiGeneticAlgorithm<T>
         &mut self.population
     }
 
-    pub fn evaluate_population(&mut self, /* INSTINCTS *,* INSTINCT WEIGHTS */)
+    pub fn evaluate_population(&mut self, instinct_weights: &HashMap<Instinct, f32>)
     {
         // TODO: Instincts should come from somehwere else like a config
-        self.population.evaluate(&self.config.fitness_evaluators, &vec![ Instinct::Nomadic, Instinct::Basic, Instinct::Hoarding, Instinct::Herding, Instinct::Predatory ]);
+        self.population.evaluate(&self.config.fitness_evaluators,
+                                 &vec![ Instinct::Nomadic, Instinct::Basic, Instinct::Hoarding, Instinct::Herding, Instinct::Predatory ],
+                                 instinct_weights, self.config.accumulates_over);
     }
 
     pub fn population(&mut self) -> &mut GAPopulation<T>

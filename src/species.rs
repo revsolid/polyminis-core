@@ -274,7 +274,7 @@ impl Species
 
     pub fn evaluate(&mut self)
     {
-        self.ga.evaluate_population();
+        self.ga.evaluate_population(&self.instinct_weights);
 
         let species_score = self.ga.get_population().iter().fold(0.0,
                                 |mut accum, ind|

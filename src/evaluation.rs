@@ -350,22 +350,19 @@ pub struct PolyminiEvaluationCtx
 {
     evaluators: Vec<FitnessEvaluator>,
     accumulator: PolyminiFitnessAccumulator,
+    instinct_weights: HashMap<Instinct, f32>,
+
     accumulates_over: bool,
 }
 impl PolyminiEvaluationCtx
 {
-    pub fn new() -> PolyminiEvaluationCtx
-    {
-        PolyminiEvaluationCtx { evaluators: vec![],
-                                accumulator: PolyminiFitnessAccumulator::new(vec![ Instinct::Basic ]),
-                                accumulates_over: false }
-    }
-
-    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator, accumulates_over: bool) -> PolyminiEvaluationCtx
+    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator, instinct_weights: HashMap<Instinct, f32>,
+                    accumulates_over: bool) -> PolyminiEvaluationCtx
     {
         PolyminiEvaluationCtx { evaluators: evaluators,
                                 accumulator: accumulator,
-                                accumulates_over: false }
+                                instinct_weights: instinct_weights,
+                                accumulates_over: accumulates_over }
     }
 
     pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>)
@@ -468,7 +465,7 @@ mod test
         accum.add(&Instinct::Nomadic, 1.0);
         accum.add(&Instinct::Predatory, 1.0);
         
-        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false };
+        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false, instinct_weights: HashMap::new() };
 
         assert_eq!(eval_ctx.get_raw(), 3.0);
         let mut map = HashMap::new();
