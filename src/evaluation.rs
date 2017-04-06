@@ -367,7 +367,7 @@ impl PolyminiEvaluationCtx
 
     pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>)
     {
-        debug!("Before fold - {}", self.evaluators.len());
+        debug!("EvaluationCtx::evaluate Before fold - {}", self.evaluators.len());
         self.evaluators.iter_mut().fold(&mut self.accumulator,
                                         |accum, ref mut evaluator|
                                         {
@@ -376,15 +376,20 @@ impl PolyminiEvaluationCtx
                                             accum.add(&v.0, v.1);
                                             accum
                                         });
-        debug!("After fold - {}", self.evaluators.len());
+        debug!("EvaluationCtx::evaluate After fold - {}", self.evaluators.len());
     }
 
     pub fn get_raw(&self) -> f32
     {
-        self.get_fitness(&HashMap::new())
+        self.calculate_fitness(&HashMap::new())
     }
 
-    pub fn get_fitness(&self, weights: &HashMap<Instinct, f32>) -> f32
+    pub fn get_fitness(&self) -> f32
+    {
+        self.calculate_fitness(&self.instinct_weights)
+    }
+
+    fn calculate_fitness(&self, weights: &HashMap<Instinct,f32>) -> f32
     {
         let mut res = 0.0;
         for (instinct, score) in &self.accumulator.accumulated_by_instinct
@@ -395,7 +400,7 @@ impl PolyminiEvaluationCtx
                                 None => { 1.0 }
                             });
         }
-        debug!("Accumulated {}", res);
+        debug!("EvaluationCtx::calculate_fitness: Accumulated {}", res);
 
         if res >= 0.0
         {
@@ -410,6 +415,11 @@ impl PolyminiEvaluationCtx
     pub fn accumulates_over(&self) -> bool
     {
         self.accumulates_over
+    }
+
+    pub fn get_per_instinct(&self) -> &HashMap<Instinct, f32>
+    {
+        &self.accumulator.accumulated_by_instinct
     }
 }
 
@@ -465,11 +475,11 @@ mod test
         accum.add(&Instinct::Nomadic, 1.0);
         accum.add(&Instinct::Predatory, 1.0);
         
-        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false, instinct_weights: HashMap::new() };
-
-        assert_eq!(eval_ctx.get_raw(), 3.0);
         let mut map = HashMap::new();
         map.insert(Instinct::Nomadic, 2.0);
-        assert_eq!(eval_ctx.get_fitness(&map), 5.0);
+        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false, instinct_weights: map.clone() };
+
+        assert_eq!(eval_ctx.get_raw(), 3.0);
+        assert_eq!(eval_ctx.get_fitness(), 5.0);
     }
 }

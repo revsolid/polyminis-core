@@ -309,7 +309,7 @@ mod test
 
 
         // TODO: Make this an easy to parameterize thing
-        let total_epochs = 50;
+        let total_epochs = 1;
         let mut serialization_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DEBUG);
         let outer_now = Instant::now();
         println!("Starting {} Epochs", total_epochs);

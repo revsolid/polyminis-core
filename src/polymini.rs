@@ -15,6 +15,20 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
+pub type EvaluationStats = HashMap<Instinct, f32>;
+
+impl Serializable for EvaluationStats
+{
+    fn serialize(&self, s_ctx: &mut SerializationCtx) -> Json
+    {
+        let mut json_obj = pmJsonObject::new();
+        for (instinct, score) in self
+        {
+            json_obj.insert(format!("{}", instinct), score.to_json());
+        }
+        Json::Object(json_obj)
+    }
+}
 
 pub struct Stats
 {
@@ -25,6 +39,7 @@ pub struct Stats
     speed: usize,
     total_cells: usize,
     //TODO: combat_stats: CombatStatistics
+    eval_stats: EvaluationStats,
 }
 const BASE_LINE_TMP: (f32, f32) = (0.0, 1.0);
 const BASE_LINE_PH:  (f32, f32) = (0.0, 1.0);
@@ -37,7 +52,7 @@ impl Stats
         let hp = (size / 2) as i32;
         let nrg = Stats::calculate_energy_from(morph);
         Stats { max_hp: hp, current_hp: hp, max_energy: nrg, current_energy: nrg,
-                speed: sp, total_cells: size }
+                speed: sp, total_cells: size, eval_stats: EvaluationStats::new() }
     }
     fn calculate_speed_from(morph: &Morphology) -> usize
     {
@@ -81,6 +96,26 @@ impl Stats
         let min_ph = (BASE_LINE_PH.0 + a_resist).max(0.0);
         let max_ph = (BASE_LINE_PH.1 + b_resist).min(1.0);
         (min_ph, max_ph)
+    }
+
+    fn add_eval_stats(&mut self, stats: &EvaluationStats, restarts: u32)
+    {
+        //
+        for (stat, score) in stats
+        {
+            match self.eval_stats.entry(*stat)
+            {
+                Entry::Occupied(mut o) =>
+                {
+                    let v = *o.get();
+                    o.insert(v  + (score / restarts as f32));
+                },
+                Entry::Vacant(mut o) =>
+                {
+                    o.insert(*score / restarts as f32);
+                }
+            }
+        }
     }
 }
 impl Serializable for Stats
@@ -192,6 +227,21 @@ impl Polymini
                 pmini.set_raw(raw);
                 pmini.set_fitness(fitness);
 
+                match json_obj.get("EvaluationStats")
+                {
+                    Some(&Json::Object(ref obj)) =>
+                    {
+                        for (k, v) in obj
+                        {
+                            pmini.stats.eval_stats.insert(Instinct::from_string(k).unwrap_or(Instinct::Basic),
+                                                          v.as_f64().unwrap_or(0.0) as f32);
+                        }
+                    },
+                    _ => 
+                    {
+                    }
+                }
+
                 Some(pmini)
             },
             _ =>
@@ -274,6 +324,7 @@ impl Polymini
         self.set_raw(0.0);
         self.fitness_statistics.clear();
         self.fitness_statistics_historic.clear();
+        self.stats.eval_stats = HashMap::new();
         self.restarts = 0;
     }
 
@@ -415,6 +466,12 @@ impl Serializable for Polymini
             json_obj.insert("Ph".to_owned(),      self.get_ph().serialize(ctx));
         }
 
+        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) ||
+           ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS) 
+        {
+            json_obj.insert("EvaluationStats".to_owned(), self.stats.eval_stats.serialize(ctx));
+        }
+
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATS) || 
            ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) 
         {
@@ -536,22 +593,26 @@ impl PolyminiGAIndividual for Polymini
                 ctx.evaluate(&self.fitness_statistics);
 
                 let mut raw = ctx.get_raw();
-                //TODO: Get weights from somewhere
-                let mut fitness = ctx.get_raw();
+                let mut fitness = ctx.get_fitness();
 
                 if ctx.accumulates_over()
                 {
-                    raw += self.raw();
-                    fitness += self.fitness();
+                    let restarts_inv = 1.0 / (self.restarts + 1) as f32;
+                    let one_minus = 1.0 - restarts_inv;
 
-                    raw     /= (self.restarts + 1) as f32;
-                    fitness /= (self.restarts + 1) as f32;
+                    raw     *= restarts_inv;
+                    fitness *= restarts_inv;
+
+                    raw += ( self.raw() * one_minus);
+                    fitness += ( self.fitness() * one_minus);
                 }
 
                 // Save the fitness stats into the Historic Performance and clear the
                 // 'Per-Scenario' list
                 self.fitness_statistics_historic.insert(self.restarts, self.fitness_statistics.clone());
                 self.fitness_statistics.clear();
+
+                self.stats.add_eval_stats(ctx.get_per_instinct(), self.restarts + 1);
 
                 self.set_raw(raw);
                 self.set_fitness(fitness);

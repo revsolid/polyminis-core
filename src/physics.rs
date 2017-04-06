@@ -685,9 +685,9 @@ impl PhysicsWorld
 
             let mut corners = [(0,0); 4];
             corners[0] = (   minx,       miny);
-            corners[1] = (   miny,       minx);
+            corners[1] = (-1*maxy,       minx);
             corners[2] = (-1*maxx,       miny);
-            corners[3] = (-1*maxy,       -maxx);
+            corners[3] = (   miny,       -1*maxx);
 
             let orientation = ncoll_orientation_sim_orientation(&ob.position.rotation);
             let corner = corners[orientation as usize];
