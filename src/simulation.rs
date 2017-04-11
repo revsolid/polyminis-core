@@ -338,6 +338,11 @@ impl SimulationEpoch
             species.evaluate();
         }
 
+        self.update_species_percentage();
+    }
+
+    fn update_species_percentage(&mut self)
+    {
         // Calculate Proportions of the species' fitness
         //
         let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
@@ -605,6 +610,7 @@ impl SimulationEpoch
                 self.species[s].evaluate();
             }
         }
+        self.update_species_percentage();
         self.environment = original_env;
     }
 }

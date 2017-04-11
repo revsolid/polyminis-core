@@ -30,6 +30,8 @@ use ::uuid::PUUID;
 //
 pub type PlacementFunction = Fn(&mut PolyminiRandomCtx) -> (f32, f32);
 
+const PM_PHYS_MARGIN: f32 = 0.01;
+
 // Polymini Physics Object Type
 #[derive(Debug)]
 enum PPOType 
@@ -292,9 +294,8 @@ impl Physics
         let c_dimensions = (self.ncoll_dimensions.x as f32 / 2.0, self.ncoll_dimensions.y as f32 / 2.0);
 
 
-        let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
-                                                              c_dimensions.1 as f32)));
-
+        let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32 - PM_PHYS_MARGIN,
+                                                              c_dimensions.1 as f32 - PM_PHYS_MARGIN)));
 
         let disp = Vector2::new(c_dimensions.0 + self.corner.0 as f32,
                                 c_dimensions.1 + self.corner.1 as f32);
@@ -567,7 +568,7 @@ impl PhysicsWorld
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()), 
                             ShapeHandle2::new(Compound::new(vec![(iso, rect)])),
-                            self.objects_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.objects_cgroup, GeometricQueryType::Proximity(PM_PHYS_MARGIN),
                             PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
         self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
@@ -580,7 +581,7 @@ impl PhysicsWorld
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
-                            self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.polyminis_cgroup, GeometricQueryType::Proximity(PM_PHYS_MARGIN),
                             PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions, physics.corner));
         let v = !self.finish_adding();
         if v
@@ -674,20 +675,31 @@ impl PhysicsWorld
         self.step_internal(false, true)
     }
 
+/*
     fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>, dump: bool) -> bool
     {
         let corn_getter = |ob: &CollisionObject2<f32, PolyminiPhysicsData> |
         {
             let minx = ob.data.corner.get().0;
             let miny = ob.data.corner.get().1;
+
+            let off = if minx < 0 
+            {
+                0
+            }
+            else
+            {
+                1
+            };
+
             let maxx = ob.data.dimensions.get().x as i8 + minx;
             let maxy = ob.data.dimensions.get().y as i8 + miny;
 
             let mut corners = [(0,0); 4];
-            corners[0] = (   minx,       miny);
-            corners[1] = (-1*maxy,       minx);
-            corners[2] = (-1*maxx,       miny);
-            corners[3] = (   miny,       -1*maxx);
+            corners[0] = (   minx,         miny);
+            corners[1] = (-1*maxy + off,   minx - 1);
+            corners[2] = (-1*maxx + 1,    -1*maxy + 1);
+            corners[3] = (   miny + 1,  -1*maxx + off);
 
             let orientation = ncoll_orientation_sim_orientation(&ob.position.rotation);
             let corner = corners[orientation as usize];
@@ -798,6 +810,7 @@ Collision - Just Touching: {}
 
         return res;
     }
+    */
 
     // NOTE:
     // Placement means we retry positioning objects that are colliding 
@@ -822,17 +835,8 @@ Collision - Just Touching: {}
             {
                 let (object_1, object_2, bx_prox_detect) = coll_data;
 
-
                 match bx_prox_detect.proximity()
                 {
-                    Proximity::Intersecting =>
-                    {
-                        debug!("Intersecting");
-                        if PhysicsWorld::just_touching(&object_1, &object_2, loops >= (max_loops - 5))
-                        {
-                            continue
-                        }
-                    },
                     Proximity::WithinMargin =>
                     {
                         debug!("Collision: WithinMargin");
@@ -842,6 +846,11 @@ Collision - Just Touching: {}
                     {
                         debug!("Collision: Disjoint");
                         continue
+                    },
+                    Proximity::Intersecting =>
+                    {
+                        debug!("Intersecting");
+                        // Proper collision, falls through
                     },
                 }
 

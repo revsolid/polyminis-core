@@ -3,6 +3,7 @@ use ::serialization::*;
 use ::uuid::PUUID;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::f32;
 
 // Temperature Tracker for Polyminis 
@@ -130,7 +131,7 @@ impl ThermoWorld
 
     pub fn add(&mut self, thermo: &mut Thermo, pos: (f32, f32)) -> bool
     {
-        let (gc_x, gc_y) = ThermoWorld::coordToGridPosition(pos, self.dimensions, self.thermo_grid.len(), self.thermo_grid[0].len());
+        let (gc_x, gc_y) = ThermoWorld::coord_to_grid_position(pos, self.dimensions, self.thermo_grid.len(), self.thermo_grid[0].len());
         let grid_temp = self.thermo_grid[gc_x][gc_y];
         let mut data = ThermoData { uuid: thermo.uuid, position: pos, emmit_intensity: 0.1, 
                                     current_temperature: grid_temp, is_individual: true };
@@ -139,9 +140,9 @@ impl ThermoWorld
         true
     }
 
-    pub fn add_object(&mut self, uuid: PUUID, position: (f32, f32), intensity: f32)
+    pub fn add_object(&mut self, uuid: PUUID, position: (f32, f32), current_temperature: f32, intensity: f32)
     {
-        let obj = ThermoData { uuid: uuid, position: position, emmit_intensity: intensity, current_temperature: 0.0, is_individual: false };
+        let obj = ThermoData { uuid: uuid, position: position, emmit_intensity: intensity, current_temperature: current_temperature, is_individual: false };
         self.thermo_objects.insert(uuid, obj);
         self.recalculate();
     }
@@ -155,7 +156,7 @@ impl ThermoWorld
         {
             if obj.is_individual         
             {
-                let gcoords = ThermoWorld::coordToGridPosition(obj.position, dims, x_len, y_len);
+                let gcoords = ThermoWorld::coord_to_grid_position(obj.position, dims, x_len, y_len);
                 let mut grid_v = self.thermo_grid[gcoords.0][gcoords.1];
 
                 // N-MidPoint Algorithm (aka I'm pretty sure this has a name already)
@@ -165,6 +166,14 @@ impl ThermoWorld
                 }
 
                 obj.current_temperature = grid_v;
+
+                let mut grid_v_delta = grid_v - self.thermo_grid[gcoords.0][gcoords.1];
+                grid_v_delta /= 100.0;
+                if grid_v_delta >= 0.001
+                {
+                    self.thermo_grid[gcoords.0][gcoords.1] += grid_v_delta  ; // Polyminis affect temperature just a little bit
+                    self.thermo_grid[gcoords.0][gcoords.1].min(1.0).max(0.0);
+                }
             }
         }
     }
@@ -191,7 +200,19 @@ impl ThermoWorld
                     let diff_x = (t_x as f32 - obj.position.0).abs();
                     let diff_y = (t_y as f32 - obj.position.1).abs();
 
-                    self.thermo_grid[t_x][t_y] +=  ( (obj.current_temperature) * obj.emmit_intensity / (diff_x.max(diff_y).max(1.0)));
+                    if diff_x <= 0.001 && diff_y <= 0.001
+                    {
+                        self.thermo_grid[t_x][t_y] = obj.current_temperature;
+                    }
+                    else
+                    {
+                        let mut grid_v = self.thermo_grid[t_x][t_y];
+                        let d_temp = (obj.current_temperature - grid_v);
+
+                        grid_v += (d_temp / diff_x.max(diff_y));
+                        
+                        self.thermo_grid[t_x][t_y] = grid_v.min(1.0).max(0.0);
+                    }
                 }
             }
         }
@@ -212,7 +233,7 @@ impl ThermoWorld
         }
     }
 
-    fn coordToGridPosition(position: (f32, f32), dims: (f32, f32), x_len: usize, y_len: usize) -> (usize, usize)
+    fn coord_to_grid_position(position: (f32, f32), dims: (f32, f32), x_len: usize, y_len: usize) -> (usize, usize)
     {
         if (position.0 < 0.0 || position.1 < 0.0)
         {
@@ -250,5 +271,50 @@ impl ThermoWorld
         }
 
         (x, y)
+    }
+}
+impl fmt::Debug for ThermoWorld
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        for t_x in 0..self.thermo_grid.len()
+        {
+            write!(f, "\n");
+            for t_y in 0..self.thermo_grid[t_x].len()
+            {
+                write!(f, "{:.*} ", 2, self.thermo_grid[t_x][t_y]);
+            }
+        }
+        write!(f, "\n")
+    }
+}
+impl fmt::Display for ThermoWorld
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+
+#[cfg(test)]
+mod test
+{
+    extern crate env_logger;
+
+    use super::*;
+
+    #[test]
+    fn test_thermal_update()
+    {
+        let _ = env_logger::init();
+        let mut th_world = ThermoWorld::new_with_dimensions((100.0, 100.0), 0.3141);
+        debug!("{}", th_world);
+        th_world.step();
+        debug!("\n\n{}", th_world);
+        th_world.add_object(1, (0.0, 0.0), 0.99, 0.5);
+        debug!("\n\n{}", th_world);
+        th_world.add_object(2, (9.0, 9.0), 0.20, 0.5);
+        debug!("\n\n{}", th_world);
     }
 }

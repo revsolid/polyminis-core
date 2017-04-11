@@ -16,11 +16,15 @@ const KENVIRONMENT_DIMENSIONS: (f32, f32) = (50.0, 50.0);
 pub enum WorldObjectParams
 {
     PhysicsWorldParams { position: (f32, f32), dimensions: (u8, u8) },
-    ThermoWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
-    PhWorldParams { position: (f32, f32), currentTemperature: f32, emmitIntensity: f32 },
+    ThermoWorldParams  { current_temperature: f32 },
+    PhWorldParams      { current_ph: f32 },
 
     // Objects with this Params get Serialized / Written in the DB
     PermanentWorldParams,
+
+    // If this object is part of a 'border'
+    BorderWorldParams, // Might be getting a bit ridic.
+
     // ETC..
 }
 #[derive(Clone)]
@@ -45,6 +49,13 @@ impl WorldObject
             uuid: PolyminiUUIDCtx::next(),
             params: params,
         }
+    }
+
+    pub fn new_border_object(position: (f32, f32), dimensions: (u8, u8)) -> WorldObject
+    {
+        let mut wo = WorldObject::new_static_object(position, dimensions, false);
+        wo.params.push(WorldObjectParams::BorderWorldParams);
+        wo
     }
 
     pub fn advance_epoch(&self) -> WorldObject
@@ -72,6 +83,18 @@ impl Serializable for WorldObject
                 {
                     json_obj.insert("Position".to_owned(), Vector2::new(p.0, p.1).serialize(ctx));
                     json_obj.insert("Dimensions".to_owned(), Vector2::new(d.0 as f32, d.1 as f32).serialize(ctx));
+                },
+                &WorldObjectParams::ThermoWorldParams { current_temperature: _ } =>
+                {
+                },
+                &WorldObjectParams::PhWorldParams { current_ph: _ } =>
+                {
+                },
+                &WorldObjectParams::PermanentWorldParams =>
+                {
+                },
+                &WorldObjectParams::BorderWorldParams =>
+                {
                 },
                 _ =>
                 {
@@ -111,6 +134,10 @@ impl Deserializable for WorldObject
                                     position: pos,   
                                     dimensions: dims,   
                                  });
+                }
+
+                if JsonUtils::verify_has_fields(json_obj, &vec!["Position".to_owned(), "Dimensions".to_owned()])
+                {
                 }
 
                 debug!("Env::WorldObject::Serialization Params Len - {}", params.len()); 
@@ -327,13 +354,26 @@ impl Environment
 
                 if json_obj.get("AddBorder").unwrap_or(&Json::Null).as_boolean().unwrap_or(false)
                 {
-                    env.add_static_object( (0.0, 0.0),   (dims.0 as u8, 1), false);
-                    env.add_static_object( (0.0, 0.0),   (1, dims.1 as u8), false);
-                    env.add_static_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8), false);
-                    env.add_static_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1), false);
+                    env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, 1)));
+                    env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (1, dims.1 as u8)));
+                    env.add_object(WorldObject::new_border_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8)));
+                    env.add_object(WorldObject::new_border_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1)));
                 }
 
 
+                {
+                    let cfg = json_obj.get("WorldConfig");
+                    if cfg.is_some() 
+                    {
+                        let mut objs = WorldBuilder::populate_world(cfg.unwrap());
+                        let l = objs.len();
+                        for o in objs.drain(0..l)
+                        {
+                            env.add_object(o);
+                        }
+                    }
+                }
+                
                 Some(env)
             },
             _ => 
@@ -357,7 +397,7 @@ impl Environment
             let pos = polymini.get_physics().get_starting_pos();
             res &= self.thermal_world.add(polymini.get_thermo_mut(), pos);
             res &= self.ph_world.add(polymini.get_ph_mut(), pos);
-            true
+            res 
         }
     }
 
@@ -383,17 +423,43 @@ impl Environment
 
     pub fn add_object(&mut self, world_object: WorldObject)
     {
-        for p in &world_object.params
+        let mut pos = (0.0, 0.0);
+        let mut dims = (0, 0);
+
+
+        // First Pass - Physics and standalone params 
+        for params in &world_object.params
         {
-            match *p
+            match *params
             {
                 WorldObjectParams::PhysicsWorldParams { position: p, dimensions: d } =>
                 {
                     self.physical_world.add_object(world_object.uuid, p, d);
+                    pos = p;
+                    dims = d;
                 },
                 WorldObjectParams::PermanentWorldParams =>
                 {
                     self.permanent_objects.insert(world_object.uuid);
+                },
+                _ => {},
+            }
+        }
+
+        // Second Pass - Everything That Depends on Placement 
+        // If position and dims == (0,0) that's ok better than crashing or
+        // having a complex dependency system
+        for p in &world_object.params 
+        {
+            match *p
+            {
+                WorldObjectParams::ThermoWorldParams { current_temperature: ct } => 
+                {
+                    self.thermal_world.add_object(world_object.uuid, pos, ct, 1.0);
+                },
+                WorldObjectParams::PhWorldParams { current_ph: cph } => 
+                {
+                    self.thermal_world.add_object(world_object.uuid, pos, cph, 1.0);
                 },
                 _ => {},
             }

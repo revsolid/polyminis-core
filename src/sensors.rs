@@ -1,6 +1,7 @@
+use ::serialization::*;
+
 use std::collections::HashMap;
 use std::fmt;
-use ::serialization::*;
 
 pub type SensoryPayload = HashMap<SensorTag, f32>;
 
