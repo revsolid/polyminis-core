@@ -1,6 +1,7 @@
+use ::serialization::*;
+
 use std::collections::HashMap;
 use std::fmt;
-use ::serialization::*;
 
 pub type SensoryPayload = HashMap<SensorTag, f32>;
 
@@ -8,40 +9,28 @@ pub type SensoryPayload = HashMap<SensorTag, f32>;
 pub enum SensorTag
 {
     // Default Sensors Not Evolvable
+    // -- Movement
     PositionX,
     PositionY,
     Orientation,
     LastMoveSucceded,
-
+    // --Time
+    TimeGlobal,
+    TimeSubStep,
 
     // Evolvable Sensors
+    // -- FoodSources
     GSensor,
 
 }
-
-#[derive(Clone, Copy)]
-pub struct Sensor
+impl SensorTag
 {
-    pub tag: SensorTag,
-    pub cardinality: usize,
-    index: usize,
-}
-impl Sensor
-{
-    pub fn new(tag: SensorTag, index: usize) -> Sensor
+    pub fn get_cardinality(&self) -> usize
     {
-        //TODO: Cardinality
-        Sensor { tag: tag, cardinality: 1, index: index }
-    }
-
-    pub fn get_total_cardinality(sensors: &Vec<Sensor>) -> usize
-    {
-        let mut in_len = 0;
-        for s in sensors
+        match self
         {
-            in_len += s.cardinality;
+            _ => { 1 },
         }
-        in_len
     }
 }
 impl Serializable for SensorTag
@@ -68,6 +57,8 @@ impl Deserializable for SensorTag
                     "orientation"      => { to_ret = SensorTag::Orientation },
                     "lastmovesucceded" => { to_ret = SensorTag::LastMoveSucceded },
                     "gsensor"          => { to_ret = SensorTag::GSensor },
+                    "timeglobal"       => { to_ret = SensorTag::TimeGlobal },
+                    "timesubstep"      => { to_ret = SensorTag::TimeSubStep },
 
                     //Default
                     _                  => { return None },
@@ -86,5 +77,31 @@ impl fmt::Display for SensorTag
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         fmt::Debug::fmt(self, f)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Sensor
+{
+    pub tag: SensorTag,
+    pub cardinality: usize,
+    index: usize,
+}
+impl Sensor
+{
+    pub fn new(tag: SensorTag, index: usize) -> Sensor
+    {
+        //TODO: Cardinality
+        Sensor { tag: tag, cardinality: tag.get_cardinality(), index: index }
+    }
+
+    pub fn get_total_cardinality(sensors: &Vec<Sensor>) -> usize
+    {
+        let mut in_len = 0;
+        for s in sensors
+        {
+            in_len += s.cardinality;
+        }
+        in_len
     }
 }

@@ -49,18 +49,20 @@ pub type Coord = (i8, i8);
 
 pub struct DeathContext
 {
-    step: usize,
+    pub step: u32,
+    pub max_steps: u32,
     reason: DeathReason,
 }
 impl DeathContext
 {
-    pub fn new(reason: DeathReason, step: usize) -> DeathContext
+    pub fn new(reason: DeathReason, step: u32, max_steps: u32) -> DeathContext
     {
-        DeathContext { reason: reason, step: step }
+        DeathContext { reason: reason, step: step, max_steps: max_steps }
     }
 }
 pub enum DeathReason
 {
     Placement,
+    HP
 }
 

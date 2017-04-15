@@ -15,6 +15,8 @@ pub mod morphology;
 #[allow(dead_code)]
 pub mod physics;
 #[allow(dead_code)]
+pub mod ph;
+#[allow(dead_code)]
 pub mod polymini;
 #[allow(dead_code)]
 pub mod random;
@@ -26,6 +28,8 @@ pub mod serialization;
 pub mod simulation;
 #[allow(dead_code)]
 pub mod species;
+#[allow(dead_code)]
+pub mod thermal;
 #[allow(dead_code)]
 pub mod traits;
 #[allow(dead_code)]

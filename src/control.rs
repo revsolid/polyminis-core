@@ -13,7 +13,7 @@ use ::genetics::*;
 use ::serialization::*;
 use ::types::*;
 
-use std::cmp::{max};
+use std::cmp::{max, min};
 
 pub struct Perspective
 {
@@ -152,15 +152,21 @@ impl Control
     
     pub fn sense(&mut self, sensed: &SensoryPayload)
     {
+        trace!("Sensing...");
         self.inputs.clear();
+
+        let mut i = 0;
+        let mut j = 0;
         for sensor in &self.sensor_list
         {
+            i += 1;
             match sensed.get(&sensor.tag)
             {
                 Some(payload) =>
                 {
                     //TODO: Multi-input sensors (e.g. Direction + Distance)
                     self.inputs.push(*payload);
+                    j += 1;
                 },
                 None =>
                 {
@@ -169,14 +175,18 @@ impl Control
                 }
             }
         }
+        trace!("Sensed... {}/{}", i, j);
     }
     pub fn think(&mut self)
     {
+        trace!("Thinking...");
         // Feedforward NN
         let mut ins : Vec<f32> = self.inputs.clone();
 
-        // Move all the values from [0..1] to [-0.5, 0.5]
-        ins = ins.iter().map(|&v| { v - 0.5 }).collect();
+        // Move all the values from [0..1] to [-0.5, 0.5] and amplify them by 10x
+        // NOTE: This 10x was needed because the inputs were changing too subtly and the NN wasn't
+        // really 'learning'
+        ins = ins.iter().map(|&v| { (v - 0.5) * 10.0 }).collect();
         
 
         let hid = self.nn[0].compute(&ins);
@@ -185,6 +195,13 @@ impl Control
         self.hidden = hid.clone();
 
         assert_eq!(outs.len(), self.outputs.len());
+
+        if outs.len() > 0
+        {
+            debug!("NNDebug::Think - Inputs:  {:?}", ins); 
+            debug!("NNDebug::Think - Hiddens: {:?}", hid); 
+            debug!("NNDebug::Think - Outputs: {:?}", outs);
+        }
         self.outputs = outs.iter().map(|&v| { v - 0.5 }).collect();
     }
     pub fn get_actions(&self) -> ActionList
@@ -208,7 +225,12 @@ impl Control
 
     pub fn crossover(&self, other: &Control, rand_ctx: &mut PolyminiRandomCtx, new_sensor_list: Vec<Sensor>, new_actuator_list: Vec<Actuator>) -> Control
     {
-        let hid_len = (self.hidden_layer_size + other.hidden_layer_size) / 2;
+        // Make sure we pick the smaller size and then the bigger and that we at least have a
+        // correct range
+        let s_size = max(min(self.hidden_layer_size, other.hidden_layer_size) - 1, 1);
+        let b_size = min(max(self.hidden_layer_size, other.hidden_layer_size) + 1, s_size + 1);
+        let hid_len = rand_ctx.gen_range(s_size, b_size);
+
         let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);
         debug!("Crossing In to Hidden Layer - {}", self.nn[0].get_coefficients().len());
         let mut in_to_hid_generator = CrossoverWeightsGenerator::new(rand_ctx, &self.nn[0], &other.nn[0], self.inputs.len(), self.hidden_layer_size, new_in_size, hid_len);
@@ -224,13 +246,13 @@ impl Control
         
         let delta_hl: i32 = random_ctx.gen_range(-2, 2);
 
-        let new_hid_size = if (self.hidden_layer_size as i32) + delta_hl >= 1
+        let new_hid_size = if (self.hidden_layer_size as i32 + delta_hl) >= 1
         {
             ((self.hidden_layer_size as i32) + delta_hl) as usize
         }
         else
         {
-            1
+            random_ctx.gen_range(1,3) 
         };
 
         let new_in_size =  Sensor::get_total_cardinality(&new_sensor_list);
@@ -427,7 +449,7 @@ impl<'a> WeightsGenerator for RandomWeightsGenerator<'a>
 pub struct MutateWeightsGenerator<'a>
 {
     rand_ctx: &'a mut PolyminiRandomCtx,
-    has_mutated: bool,
+    mutations: usize,
     internal_generator: UpdateWeightsGenerator,
 }
 impl<'a> MutateWeightsGenerator<'a>
@@ -437,7 +459,8 @@ impl<'a> MutateWeightsGenerator<'a>
     {
         debug!("Mutation Generator - {} {} {} {}", old_in_size, old_out_size, new_in_size, new_out_size); 
         let uwg = UpdateWeightsGenerator::new(ctx, l1, old_in_size, old_out_size, new_in_size, new_out_size);
-        MutateWeightsGenerator { rand_ctx: ctx, has_mutated: false,  internal_generator: uwg }
+        let muts = ctx.gen_range(2, 5);
+        MutateWeightsGenerator { rand_ctx: ctx, mutations: muts,  internal_generator: uwg }
     }
 }
 impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
@@ -445,12 +468,12 @@ impl<'a> WeightsGenerator for MutateWeightsGenerator<'a>
     fn generate(&mut self) -> f32
     {
         let mut to_ret = self.internal_generator.generate();
-        if !self.has_mutated
+        if self.mutations > 0
         {
             if self.rand_ctx.gen_range(0.0, 1.0) < 1.0  / (self.internal_generator.bias_values.len() + self.internal_generator.weight_values.len()) as f32
             {
                 to_ret = self.rand_ctx.gen_range(-0.5, 0.5);
-                self.has_mutated = true;
+                self.mutations -= 1;
             }
         }
         debug!("Mutate Generator - {}", to_ret);

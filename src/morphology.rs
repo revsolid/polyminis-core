@@ -146,7 +146,7 @@ impl Deserializable for TTKey
             },
             _ => 
             {
-                error!("Wrong Json type for TTKey Desrialization");
+                error!("Wrong Json type for TTKey Deserialization");
                 None
             }
         }
@@ -313,9 +313,9 @@ impl Representation
         let maxy = dimensions.1 as i8 + miny - 1;
 
         corners[0] = (   minx,       miny);
-        corners[1] = (   miny,    -1*maxx);
-        corners[2] = (-1*maxx,    -1*maxy);
-        corners[3] = (-1*maxy,       minx);
+        corners[1] = (-1*maxy,       minx);
+        corners[2] = (-1*maxx,       miny);
+        corners[3] = (   miny,       minx);
 
         Representation { cells: cells, positions: all_positions, dimensions: dimensions,
                          corners: corners }
@@ -512,6 +512,11 @@ impl Morphology
                 Some(c) => { curr_coord = c; },
                 None => { break; }
             }
+
+            if positions.len() > 40
+            {
+                break;
+            }
         }
 
         let l = min(cells.len(), positions.len());
@@ -605,7 +610,7 @@ impl Morphology
 
     pub fn mutate(&mut self, random_ctx: &mut PolyminiRandomCtx, table: &TranslationTable)
     {
-        for i in 0..random_ctx.gen_range(1, 8)
+        for i in 0..random_ctx.gen_range(1, max(self.original_chromosome.len() / 2, 2))
         {
             let chromosome_to_mutate = random_ctx.gen_range(0, self.original_chromosome.len());
             let allele_to_mutate = random_ctx.gen_range(0, 4);
@@ -685,6 +690,35 @@ impl Morphology
     pub fn get_corner(&self) -> (i8, i8)
     {
         self.representations.corners[0]
+    }
+
+
+    pub fn get_corner_for_orientation(&self, orientation: Direction) -> (i8, i8)
+    {
+        match orientation 
+        {
+            Direction::UP =>
+            {
+                self.representations.corners[0]
+            },
+            Direction::LEFT =>
+            {
+                self.representations.corners[1]
+            },
+            Direction::DOWN =>
+            {
+                self.representations.corners[2]
+            },
+            Direction::RIGHT =>
+            {
+                self.representations.corners[3]
+            }
+            _ =>
+            {
+                warn!("Request the Corner for Orientation: {}", orientation);
+                self.representations.corners[0]
+            }
+        }
     }
 }
 impl Serializable for Morphology

@@ -27,7 +27,7 @@ pub enum FitnessStatistic
     // Position
     FinalPosition(u8, u8),
 
-    Died,
+    Died(u32, u32),
 }
 impl FitnessStatistic
 {
@@ -133,7 +133,7 @@ impl FitnessEvaluator
                                                   {
                                                       &FitnessStatistic::TotalCells(c) =>
                                                       {
-                                                         accum += 10.0 - (10.0 - c as f32).abs();
+                                                         accum += w - ((10.0 - c as f32).abs());
                                                       },
                                                       _ => {}
                                                   }
@@ -151,9 +151,9 @@ impl FitnessEvaluator
                                                {
                                                   match stat
                                                   {
-                                                      &FitnessStatistic::Died =>
+                                                      &FitnessStatistic::Died(step, max) =>
                                                       {
-                                                          accum = 0.0;
+                                                          accum *= ( step as f32 / max as f32 );
                                                       },
                                                       _ => {}
                                                   }
@@ -192,7 +192,9 @@ impl FitnessEvaluator
             {
                 let i = Instinct::Nomadic;
                 let mut already_counted = HashSet::new();
-                let v = statistics.iter().fold(0.0,
+                let mut already_counted_x = HashSet::new();
+                let mut already_counted_y = HashSet::new();
+                let mut v = statistics.iter().fold(0.0,
                                                |mut accum, stat|
                                                {
                                                   match stat
@@ -204,13 +206,52 @@ impl FitnessEvaluator
                                                               already_counted.insert(pos);
                                                               accum += w;
                                                           }
+                                                          if !already_counted_x.contains(&pos.0)
+                                                          {
+                                                              already_counted_x.insert(pos.0);
+                                                          }
+                                                          if !already_counted_y.contains(&pos.1)
+                                                          {
+                                                              already_counted_y.insert(pos.1);
+                                                          }
                                                       },
                                                       _ => {}
                                                   }
                                                   accum
                                                });
+
+                if already_counted_x.len() > 1 && already_counted_y.len() > 1
+                {
+                    // If movement happened in X and Y give a
+                    // bonus
+                    v *= 1.1
+                }
                 debug!("Evaluated {} for {} due to Positions Visited", v, i);
                 (i,v)
+            }
+        }
+    }
+
+    fn get_associated_instinct(&self) -> Instinct
+    {
+        match *self
+        {
+            FitnessEvaluator::OverallMovement   { weight: _ }   |
+            FitnessEvaluator::DistanceTravelled { weight: _ }   |
+            FitnessEvaluator::TargetPosition    { weight: _,
+                                                  pos: _ } =>
+            {
+                Instinct::Nomadic
+            },
+
+            FitnessEvaluator::Shape { weight: _ } =>
+            {
+                Instinct::Hoarding
+            },
+
+            _ =>
+            {
+                Instinct::Basic
             }
         }
     }
@@ -309,24 +350,24 @@ pub struct PolyminiEvaluationCtx
 {
     evaluators: Vec<FitnessEvaluator>,
     accumulator: PolyminiFitnessAccumulator,
+    instinct_weights: HashMap<Instinct, f32>,
+
+    accumulates_over: bool,
 }
 impl PolyminiEvaluationCtx
 {
-    pub fn new() -> PolyminiEvaluationCtx
-    {
-        PolyminiEvaluationCtx { evaluators: vec![],
-                                accumulator: PolyminiFitnessAccumulator::new(vec![ Instinct::Basic ]) }
-    }
-
-    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator) -> PolyminiEvaluationCtx
+    pub fn new_from(evaluators: Vec<FitnessEvaluator>, accumulator: PolyminiFitnessAccumulator, instinct_weights: HashMap<Instinct, f32>,
+                    accumulates_over: bool) -> PolyminiEvaluationCtx
     {
         PolyminiEvaluationCtx { evaluators: evaluators,
-                                accumulator: accumulator }
+                                accumulator: accumulator,
+                                instinct_weights: instinct_weights,
+                                accumulates_over: accumulates_over }
     }
 
     pub fn evaluate(&mut self, statistics: &Vec<FitnessStatistic>)
     {
-        debug!("Before fold - {}", self.evaluators.len());
+        debug!("EvaluationCtx::evaluate Before fold - {}", self.evaluators.len());
         self.evaluators.iter_mut().fold(&mut self.accumulator,
                                         |accum, ref mut evaluator|
                                         {
@@ -335,15 +376,20 @@ impl PolyminiEvaluationCtx
                                             accum.add(&v.0, v.1);
                                             accum
                                         });
-        debug!("After fold - {}", self.evaluators.len());
+        debug!("EvaluationCtx::evaluate After fold - {}", self.evaluators.len());
     }
 
     pub fn get_raw(&self) -> f32
     {
-        self.get_fitness(&HashMap::new())
+        self.calculate_fitness(&HashMap::new())
     }
 
-    pub fn get_fitness(&self, weights: &HashMap<Instinct, f32>) -> f32
+    pub fn get_fitness(&self) -> f32
+    {
+        self.calculate_fitness(&self.instinct_weights)
+    }
+
+    fn calculate_fitness(&self, weights: &HashMap<Instinct,f32>) -> f32
     {
         let mut res = 0.0;
         for (instinct, score) in &self.accumulator.accumulated_by_instinct
@@ -354,7 +400,7 @@ impl PolyminiEvaluationCtx
                                 None => { 1.0 }
                             });
         }
-        debug!("Accumulated {}", res);
+        debug!("EvaluationCtx::calculate_fitness: Accumulated {}", res);
 
         if res >= 0.0
         {
@@ -364,6 +410,16 @@ impl PolyminiEvaluationCtx
         {
             0.0
         }
+    }
+
+    pub fn accumulates_over(&self) -> bool
+    {
+        self.accumulates_over
+    }
+
+    pub fn get_per_instinct(&self) -> &HashMap<Instinct, f32>
+    {
+        &self.accumulator.accumulated_by_instinct
     }
 }
 
@@ -419,11 +475,11 @@ mod test
         accum.add(&Instinct::Nomadic, 1.0);
         accum.add(&Instinct::Predatory, 1.0);
         
-        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum };
-
-        assert_eq!(eval_ctx.get_raw(), 3.0);
         let mut map = HashMap::new();
         map.insert(Instinct::Nomadic, 2.0);
-        assert_eq!(eval_ctx.get_fitness(&map), 5.0);
+        let eval_ctx = PolyminiEvaluationCtx { evaluators: vec![], accumulator: accum, accumulates_over: false, instinct_weights: map.clone() };
+
+        assert_eq!(eval_ctx.get_raw(), 3.0);
+        assert_eq!(eval_ctx.get_fitness(), 5.0);
     }
 }

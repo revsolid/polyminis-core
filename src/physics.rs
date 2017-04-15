@@ -3,7 +3,7 @@
 extern crate nalgebra;
 extern crate ncollide;
 
-use self::nalgebra::{Isometry2,  Point2, Vector1, Vector2, zero};
+use self::nalgebra::{Isometry2,  Point2, Vector1, zero};
 use self::nalgebra::{Translation, Rotation, Rotation2, RotationTo};
 use self::nalgebra::{distance};
 
@@ -13,6 +13,9 @@ use self::ncollide::world::{CollisionWorld, CollisionWorld2,
                             CollisionGroups, CollisionObject2, GeometricQueryType};
 //
 //
+//
+
+pub use self::nalgebra::Vector2 as Vector2;
 
 use std::f32::consts;
 use std::cell::{Cell as std_Cell, RefCell as std_RefCell};
@@ -26,6 +29,8 @@ use ::uuid::PUUID;
 
 //
 pub type PlacementFunction = Fn(&mut PolyminiRandomCtx) -> (f32, f32);
+
+const PM_PHYS_MARGIN: f32 = 0.01;
 
 // Polymini Physics Object Type
 #[derive(Debug)]
@@ -99,6 +104,8 @@ struct PolyminiPhysicsData
     corner: std_Cell<(i8, i8)>,
     collision_events: std_RefCell<Vec<CollisionEvent>>,
     looped: std_Cell<bool>,
+    attempted_move: std_Cell<bool>,
+    had_chance_to_move: std_Cell<bool>,
 }
 impl PolyminiPhysicsData 
 {
@@ -112,6 +119,8 @@ impl PolyminiPhysicsData
             corner: std_Cell::new(corner),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
+            attempted_move: std_Cell::new(false),
+            had_chance_to_move: std_Cell::new(false),
         }
     }
     fn new_static_object(pos: Vector2<f32>, dimensions: Vector2<f32>) -> PolyminiPhysicsData
@@ -124,6 +133,8 @@ impl PolyminiPhysicsData
             corner: std_Cell::new((0,0)),
             collision_events: std_RefCell::new(vec![]),
             looped: std_Cell::new(false),
+            attempted_move: std_Cell::new(false),
+            had_chance_to_move: std_Cell::new(false),
         }
     }
 }
@@ -229,6 +240,7 @@ fn serialize_vector(v: Vector2<f32>) -> Json
     (v.x, v.y).to_json()
 }
 
+//
 fn ncoll_orientation_sim_orientation(rotation: &Rotation2<f32>)-> u8
 {
     let rot = (rotation.rotation().x * 100.0).round() / 100.0;
@@ -282,9 +294,8 @@ impl Physics
         let c_dimensions = (self.ncoll_dimensions.x as f32 / 2.0, self.ncoll_dimensions.y as f32 / 2.0);
 
 
-        let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32,
-                                                              c_dimensions.1 as f32)));
-
+        let rect = ShapeHandle2::new(Cuboid::new(Vector2::new(c_dimensions.0 as f32 - PM_PHYS_MARGIN,
+                                                              c_dimensions.1 as f32 - PM_PHYS_MARGIN)));
 
         let disp = Vector2::new(c_dimensions.0 + self.corner.0 as f32,
                                 c_dimensions.1 + self.corner.1 as f32);
@@ -348,7 +359,11 @@ impl Physics
     pub fn get_normalized_pos(&self) -> (f32, f32)
     {
 
-        (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.0)
+        let n_pos = (self.ncoll_pos.x / self.world_dimensions.0 , self.ncoll_pos.y / self.world_dimensions.1);
+        debug!("Normalized Pos - Before: {:?}", n_pos);
+        debug!("Normalized Pos - After : {:?}", self.ncoll_pos);
+        debug!("Normalized Pos - Dims  : {:?}", self.world_dimensions);
+        n_pos
     }
 
     pub fn get_distance_moved(&self) -> f32
@@ -439,11 +454,14 @@ impl Physics
         }
         else
         {
-            self.move_succeded
+            false 
         };
 
-        // Set our new initial position
+        // Set our new initial position and reset step variables
         o.data.initial_pos.set(o.position);
+        o.data.attempted_move.set(false);
+        o.data.had_chance_to_move.set(false);
+        o.data.looped.set(false);
 
         // Nuke'm
         o.data.collision_events.borrow_mut().clear();
@@ -550,7 +568,7 @@ impl PhysicsWorld
         self.world.deferred_add(uuid,
                             Isometry2::new(nc_pos, zero()), 
                             ShapeHandle2::new(Compound::new(vec![(iso, rect)])),
-                            self.objects_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.objects_cgroup, GeometricQueryType::Proximity(PM_PHYS_MARGIN),
                             PolyminiPhysicsData::new_static_object(nc_pos, nc_dim));
 
         self.static_objects.push(StaticCollider { uuid: uuid, position: position, dimensions: dimensions });
@@ -563,10 +581,10 @@ impl PhysicsWorld
         self.world.deferred_add(physics.uuid,
                             Isometry2::new(physics.ncoll_pos, zero()),
                             ShapeHandle2::new(shapes),
-                            self.polyminis_cgroup, GeometricQueryType::Proximity(0.0),
+                            self.polyminis_cgroup, GeometricQueryType::Proximity(PM_PHYS_MARGIN),
                             PolyminiPhysicsData::new_for_polymini(physics.ncoll_pos, physics.ncoll_dimensions, physics.corner));
         let v = !self.finish_adding();
-        if v 
+        if v
         {
             warn!("Removing {}", physics.uuid);
             self.remove(physics);
@@ -581,17 +599,25 @@ impl PhysicsWorld
         }
     }
 
-    pub fn remove(&mut self, physics: &Physics)
+    pub fn remove(&mut self, physics: &Physics) -> bool
     {
         self.world.deferred_remove(physics.uuid);
         self.world.update();
+        true
     }
 
     pub fn apply(&mut self, id: usize, action: Action)
     {
         let mut new_pos;
         {
+            match self.world.collision_object(id)
+            {
+                Some(_) => {},
+                None => { error!("Trying to get {} in physics, but not here - Fatal...", id); }
+            }
             let p_obj = self.world.collision_object(id).unwrap();
+
+            p_obj.data.attempted_move.set(true);
             match action
             {
                 Action::MoveAction(MoveAction::Move(Direction::ROTATION, spin, _)) =>
@@ -626,6 +652,7 @@ impl PhysicsWorld
                 Action::NoAction =>
                 {
                     new_pos = p_obj.position;
+                    p_obj.data.attempted_move.set(false);
                 },
                 _ =>
                 {
@@ -648,8 +675,37 @@ impl PhysicsWorld
         self.step_internal(false, true)
     }
 
+/*
     fn just_touching(one: &CollisionObject2<f32, PolyminiPhysicsData>, other: &CollisionObject2<f32, PolyminiPhysicsData>, dump: bool) -> bool
     {
+        let corn_getter = |ob: &CollisionObject2<f32, PolyminiPhysicsData> |
+        {
+            let minx = ob.data.corner.get().0;
+            let miny = ob.data.corner.get().1;
+
+            let off = if minx < 0 
+            {
+                0
+            }
+            else
+            {
+                1
+            };
+
+            let maxx = ob.data.dimensions.get().x as i8 + minx;
+            let maxy = ob.data.dimensions.get().y as i8 + miny;
+
+            let mut corners = [(0,0); 4];
+            corners[0] = (   minx,         miny);
+            corners[1] = (-1*maxy + off,   minx - 1);
+            corners[2] = (-1*maxx + 1,    -1*maxy + 1);
+            corners[3] = (   miny + 1,  -1*maxx + off);
+
+            let orientation = ncoll_orientation_sim_orientation(&ob.position.rotation);
+            let corner = corners[orientation as usize];
+            Vector2::new(corner.0 as f32, corner.1 as f32)
+        };
+
         let orientation_1 = ncoll_orientation_sim_orientation(&one.position.rotation);
         let dimensions_1;
         let h_1;
@@ -663,8 +719,8 @@ impl PhysicsWorld
         else
         {
             dimensions_1 = Vector2::new(one.data.dimensions.get().y, one.data.dimensions.get().x);
-            h_1 = dimensions_1.y;
-            v_1 = dimensions_1.x;
+            h_1 = dimensions_1.x;
+            v_1 = dimensions_1.y;
         };
 
         let orientation_2 = ncoll_orientation_sim_orientation(&other.position.rotation);
@@ -680,30 +736,25 @@ impl PhysicsWorld
         else
         {
             dimensions_2 = Vector2::new(other.data.dimensions.get().y, other.data.dimensions.get().x);
-            h_2 = dimensions_2.y;
-            v_2 = dimensions_2.x;
+            h_2 = dimensions_2.x;
+            v_2 = dimensions_2.y;
         };
 
         let range_x = (h_1 + h_2) / 2.0;
         let range_y = (v_1 + v_2) / 2.0;
 
-        let corner_1 = one.position.rotation *
-                       Vector2::new(one.data.corner.get().0 as f32, one.data.corner.get().1 as f32);
-        let corner_2 = other.position.rotation *
-                       Vector2::new(other.data.corner.get().0 as f32, other.data.corner.get().1 as f32);
+        let corner_1 = corn_getter(one);
+        let corner_2 = corn_getter(other);
 
-        let disp_1 = one.position.rotation *
-                     Vector2::new(one.data.dimensions.get().x / 2.0 + one.data.corner.get().0 as f32,
-                                  one.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
-
+        let disp_1 = Vector2::new(h_1 / 2.0 + corner_1.x,
+                                  v_1 / 2.0 + corner_1.y);
 
         let adj_position1 = Vector2::new(one.position.translation.x + disp_1.x,
                                          one.position.translation.y + disp_1.y);
 
 
-        let disp_2 = other.position.rotation *
-                     Vector2::new(other.data.dimensions.get().x / 2.0 + other.data.corner.get().0 as f32,
-                                  other.data.dimensions.get().y / 2.0 + one.data.corner.get().1 as f32);
+        let disp_2 = Vector2::new(h_2 / 2.0 + corner_2.x,
+                                  v_2 / 2.0 + corner_2.y);
 
 
         let adj_position2 = Vector2::new(other.position.translation.x + disp_2.x,
@@ -712,35 +763,54 @@ impl PhysicsWorld
 
         let d_x = (adj_position1.x - adj_position2.x).abs();
         let d_y = (adj_position1.y - adj_position2.y).abs();
-     
-
-        if dump
-        {
-            warn!("Potential Collision:");
-            warn!("Object 1 {}", one.uid);
-            warn!("Object1 Pos(ncollide) {} Orientation(int) {}", one.position, orientation_1);
-            warn!("Object1 Dimensions {} Rotated {}", one.data.dimensions.get(), dimensions_1);
-            warn!("Object1 Corner {:?} Rotated {:?}", one.data.corner.get(), corner_1);
-            warn!("Object1 Adjusted Position {}", adj_position1);
-
-            warn!("Object 2 {}", other.uid);
-            warn!("Object2 Pos(ncollide) {} Orientation(int) {}", other.position, orientation_2);
-            warn!("Object2 Dimensions {} Rotated {}", other.data.dimensions.get(), dimensions_2);
-            warn!("Object2 Corner {:?} Rotated {:?}", other.data.corner.get(), corner_2);
-            warn!("Object2 Adjusted Position {}", adj_position2);
-
-            warn!("Delta X: {} Delta Y:{} Range X: {} Range Y: {}", d_x, d_y, range_x, range_y);
-        }
-        if ((d_x - range_x).abs() < 0.01 ||
+      
+        let res = if ((d_x - range_x).abs() < 0.01 ||
             (d_y - range_y).abs() < 0.01)
         {
-           return true; 
+           true
+        }
+        else
+        {
+           false
+        };
+
+        if dump 
+        {
+            warn!("
+            \n
+Collision - Just Touching: {}
+    Object 1 {}
+    Object1 Pos{}  Orientation(int) {}
+    Object1 Dimensions {} Rotated {}
+    Object1 Corner {:?} Rotated {:?}
+    Object1 Adjusted Position {}
+    
+    Object 2 {}
+    Object2 Pos {} Orientation(int) {}
+    Object2 Dimensions {} Rotated {}
+    Object2 Corner {:?} Rotated {:?}
+    Object2 Adjusted Position {}
+
+    Delta X: {} Delta Y:{} Range X: {} Range Y: {}",
+            res,
+            one.uid,
+            one.position.translation, orientation_1,
+            one.data.dimensions.get(), dimensions_1,
+            one.data.corner.get(), corner_1,
+            adj_position1,
+
+            other.uid,
+            other.position.translation, orientation_2,
+            other.data.dimensions.get(), dimensions_2,
+            other.data.corner.get(), corner_2,
+            adj_position2, 
+
+            d_x, d_y, range_x, range_y);
         }
 
-
-
-        return false;
+        return res;
     }
+    */
 
     // NOTE:
     // Placement means we retry positioning objects that are colliding 
@@ -755,12 +825,6 @@ impl PhysicsWorld
         let mut loops = 0;
         let max_loops = if placement { 500 } else { 200 };
 
-        let mut phys_capture: Vec<Json>;
-        #[cfg(physics_capture)]
-        {
-            phys_capture = vec![];
-        }
-
         loop
         {
             self.world.update();
@@ -771,17 +835,8 @@ impl PhysicsWorld
             {
                 let (object_1, object_2, bx_prox_detect) = coll_data;
 
-
                 match bx_prox_detect.proximity()
                 {
-                    Proximity::Intersecting =>
-                    {
-                        debug!("Intersecting");
-                        if PhysicsWorld::just_touching(&object_1, &object_2, loops >= (max_loops - 5))
-                        {
-                            continue
-                        }
-                    },
                     Proximity::WithinMargin =>
                     {
                         debug!("Collision: WithinMargin");
@@ -791,6 +846,11 @@ impl PhysicsWorld
                     {
                         debug!("Collision: Disjoint");
                         continue
+                    },
+                    Proximity::Intersecting =>
+                    {
+                        debug!("Intersecting");
+                        // Proper collision, falls through
                     },
                 }
 
@@ -902,8 +962,68 @@ impl PhysicsWorld
                 }
                 else
                 {
-                    corrections.push((object_1.uid, n_pos, object_1.data.dimensions.get(), object_1.data.corner.get(), object_2.uid));
-                    corrections.push((object_2.uid, n_pos_2, object_2.data.dimensions.get(), object_2.data.corner.get(), object_1.uid));
+                    /* If 2 creatures collide, we make an effort to let one of them move (to avoid
+                     * the 'sticky' polyminis when they could go past each other)
+                     *
+                     *
+                     *
+                     *
+                     */
+                    let mut first;
+                    let mut second;
+
+                    if (object_1.uid > object_2.uid)
+                    {
+                        first = object_1;
+                        second = object_2;
+                    }
+                    else
+                    {
+                        first = object_2;
+                        second = object_1;
+                    }
+
+                    n_pos = first.data.initial_pos.get();
+                    n_pos_2 = second.data.initial_pos.get();
+
+                    if first.data.attempted_move.get() && second.data.attempted_move.get()
+                    {
+                        if first.data.had_chance_to_move.get()
+                        {
+                            corrections.push((first.uid, n_pos, first.data.dimensions.get(), first.data.corner.get(), second.uid));
+                            if second.data.had_chance_to_move.get()
+                            {
+                                corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                            }
+                            else
+                            {
+                                second.data.had_chance_to_move.set(true);
+                            }
+                        }
+                        else
+                        {
+                            corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                            first.data.had_chance_to_move.set(true);
+                        }
+
+                    }
+                    else
+                    {
+                        // Only one tried to move... only correct that one
+                        if (first.data.attempted_move.get())
+                        {
+                            corrections.push((first.uid, n_pos, first.data.dimensions.get(), first.data.corner.get(), second.uid));
+                        }
+                        else if (second.data.attempted_move.get())
+                        {
+                            corrections.push((second.uid, n_pos_2, second.data.dimensions.get(), second.data.corner.get(), first.uid));
+                        }
+                        else
+                        {
+                            // How the f.. did this happen?
+                            error!("PhysicsCollisions:: Collision with 2 objects that report no movement. Harmless but signals presence of bug");
+                        }
+                    }
                 }
 
                 let ev = CollisionEvent
@@ -1108,8 +1228,7 @@ mod test
         physical_world.add_object(2, (0.0, 0.0), (2, 2));
         let mut physics = Physics::new_with_corner(1, (4, 4), -5.0, 0.0, 0, (-2, 0)); 
         physical_world.add(&mut physics);
-        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0)),
-                                Action::MoveAction(MoveAction::Move(Direction::VERTICAL, 1.1, 0.0))],
+        physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 1.2, 2.0))],
                        &mut physical_world);
         physical_world.step();
         physics.update_state(&physical_world);
@@ -1117,8 +1236,7 @@ mod test
 
         for i in 0..10
         {
-            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::HORIZONTAL, 0.2, 0.0)),
-                                    Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0))],
+            physics.act_on(0, 0, &vec![Action::MoveAction(MoveAction::Move(Direction::VERTICAL, -1.0, 0.0))],
                            &mut physical_world);
             physical_world.step();
             physics.update_state(&physical_world);

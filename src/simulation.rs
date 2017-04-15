@@ -3,6 +3,7 @@ use ::environment::*;
 use ::genetics::*;
 use ::physics::*;
 use ::polymini::*;
+use ::morphology::*;
 use ::serialization::*;
 use ::species::*;
 use ::traits::*;
@@ -17,6 +18,7 @@ use std::collections::{ HashMap, VecDeque };
 // A Simulation Epoch is a moment in evolution, while the Simulation is the process itself
 // The Simulation keeps track of Database Connections or authentication context, while the Epoch is
 // the actual evolution system
+//
 //
 //
 pub struct Simulation
@@ -50,17 +52,33 @@ impl Simulation
                             let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
                             let tier = TraitTier::new_from_json(entry.get("Tier").unwrap(), &mut ser_ctx).unwrap(); 
                             let id = entry.get("TID").unwrap().as_u64().unwrap() as u8; 
-                            master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("Trait").unwrap(), &mut ser_ctx).unwrap());
+                            master_translation_table.insert((tier, id), PolyminiTrait::new_from_json(entry.get("InternalName").unwrap(), &mut ser_ctx).unwrap());
                         },
                         _ => 
                         {
-                            warn!("Wrong type of JSON object in MasterTranslationTable");
+                            error!("Wrong type of JSON object in MasterTranslationTable");
                         }
                     }
                 }
 
-                let mut epoch = SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table).unwrap();
-                let epoch_num = json_obj.get("EpochNum").unwrap().as_u64().unwrap();
+                let mut epoch = match SimulationEpoch::new_from_json(json_obj.get("Epoch").unwrap(), &mut placement_funcs, &master_translation_table)
+                {
+                    Some(e) =>
+                    {
+                        e
+                    },
+                    None =>
+                    {
+                        error!("Couldn't Create Simulation Epoch");
+                        return None
+                    }
+                };
+
+                let epoch_num = json_obj.get("EpochNum").unwrap_or(&Json::U64(0)).as_u64().unwrap_or(0);
+
+                let top_inds = json_obj.get("EliteIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap() as usize;
+
+                let mut max = json_obj.get("MaxIndividuals").unwrap_or(&Json::U64(0)).as_u64().unwrap() as usize;
 
                 match *json_obj.get("Species").unwrap()
                 {
@@ -68,13 +86,47 @@ impl Simulation
                     {
                         for species_json in arr.iter()
                         {
+
+                            let mut filter_func: Option<Box<IndividualFilterFunction>> = None;
+                            if top_inds > 0
+                            {
+                                filter_func = Some(Box::new(move |inds_json, tt, default_sensors|
+                                    {
+                                        let mut internal_max = max;
+                                        if internal_max == 0
+                                        {
+                                            internal_max = inds_json.len();
+                                        }
+
+                                        let mut res = vec![];
+                                        while(res.len() <  internal_max)
+                                        {
+                                            let ind = Polymini::new_from_json(&inds_json[res.len() % top_inds], tt, default_sensors).unwrap();
+
+                                            res.push(ind);
+                                        }
+                                        res
+                                    }));
+                            }
+
+                            let dims = epoch.get_environment().dimensions.clone();
                             let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
-                                                           Box::new( | ctx: &mut PolyminiRandomCtx |
+                                                           Box::new( move | ctx: &mut PolyminiRandomCtx |
                                                            {
-                                                               ( (ctx.gen_range(0.0, 100.0) as f32).floor(),
-                                                                 (ctx.gen_range(0.0, 100.0) as f32).floor())
-                                                           }), &master_translation_table).unwrap();
-                            epoch.add_species(s);
+                                                               ( (ctx.gen_range(0.0, dims.0) as f32).floor(),
+                                                                 (ctx.gen_range(0.0, dims.1) as f32).floor())
+                                                           }), &master_translation_table, filter_func);
+                            match s
+                            {
+                                Some(sv) =>
+                                {
+                                    epoch.add_species(sv);
+                                },
+                                None =>
+                                {
+                                    error!("Could not create Species");
+                                }
+                            }
                         }
                     },
                     ref v =>
@@ -120,9 +172,15 @@ impl Simulation
         let new_epoch = self.current_epoch.advance();
         self.swap_epoch(new_epoch);
     }
-
 }
 
+//
+pub enum EpochRunType
+{
+    SoloRun,
+    EliteRun { top: u8 },
+    EvolutionRun,
+}
 
 //
 pub struct SimulationEpoch
@@ -149,20 +207,17 @@ impl SimulationEpoch
         {
             Json::Object(ref json_obj) =>
             {
+                if !JsonUtils::verify_has_fields(json_obj, &vec!["Environment".to_owned(), "MaxSteps".to_owned(), "Restarts".to_owned(), "Substeps".to_owned(), "Proportions".to_owned()])
+                {
+                    error!("SimulationEpoch::from_json failed! - Returning None");
+                    error!("Dumping JSON, \n{}", json.to_string());
+                    return None
+                }
                 // env
                 let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
 
-                trace!("Creating Species");
-                /* Create species from their input data */
                 let mut species = vec![];
                 // NOTE: species are added afterwards by the owning simulation 
-                /*
-                for e in json_obj.get("Species").unwrap().as_array().unwrap()
-                {
-                    species.push(Species::new_from_json(e, &env.default_sensors, placement_funcs.pop_front().unwrap()/*_or( some default )*/,
-                                 master_table).unwrap());
-                }
-                */
                 
                 // Config
                 let m_s = json_obj.get("MaxSteps").unwrap().as_u64().unwrap() as usize;
@@ -184,6 +239,7 @@ impl SimulationEpoch
             },
             _ => 
             {
+                error!("Couldn't create Simulation Epoch from Json {}", json);
                 None
             }
         }
@@ -221,10 +277,9 @@ impl SimulationEpoch
         }
 
         let mut sp = species;
-        
         // Environment Registration
         debug!("Adding Species - Start Loop");
-        for i in 0..sp.get_generation().size() 
+        for i in 0..sp.get_generation().size()
         {
             debug!("{}", i);
             let ind = &mut sp.get_generation_mut().get_individual_mut(i);
@@ -232,7 +287,15 @@ impl SimulationEpoch
             // death to eliminate those genes from the pool as soon as possible
             if !self.environment.add_individual(ind)
             {
-                ind.die(&DeathContext::new(DeathReason::Placement, 0));
+                ind.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
+            }
+            else
+            {
+                let start_pos = ind.get_physics().get_starting_pos();
+                if start_pos.0 < 0.0 || start_pos.1 < 0.0 || start_pos.0 >= self.environment.dimensions.0 || start_pos.1 >= self.environment.dimensions.1
+                {
+                    ind.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
+                }
             }
         }
         debug!("Adding Species - Done Loop");
@@ -241,11 +304,11 @@ impl SimulationEpoch
         self.species.push(sp);
 
 
+        /*
         // Re-calculate proportions 
         let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
         {
-            accum += species.get_accum_score();
-            accum
+            accum + species.get_accum_score()
         }); 
 
         // Proportions
@@ -255,11 +318,17 @@ impl SimulationEpoch
         }
 
         let new_prop = 1.0 / self.species.len() as f32;
+        */
     }
     
     pub fn get_species(&self) -> &Vec<Species>
     {
         &self.species
+    }
+
+    pub fn get_species_mut(&mut self) -> &mut Vec<Species>
+    {
+        &mut self.species
     }
 
     pub fn evaluate_species(&mut self)
@@ -268,6 +337,26 @@ impl SimulationEpoch
         {
             species.evaluate();
         }
+
+        self.update_species_percentage();
+    }
+
+    fn update_species_percentage(&mut self)
+    {
+        // Calculate Proportions of the species' fitness
+        //
+        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
+        {
+            accum += species.get_accum_score();
+            accum
+        }); 
+
+        let _ : Vec<i32> = self.species.iter_mut().map( |ref mut species|
+        {
+            let perc = species.get_accum_score() / total_species_scores;
+            species.set_percentage(perc);
+            0
+        }).collect();
     }
 
     pub fn dump_species_random_ctx(&mut self)
@@ -302,11 +391,12 @@ impl SimulationEpoch
     // TODO: This should, in some way, destroy *self* epoch
     pub fn advance(&mut self) -> SimulationEpoch
     {
-        debug!("Advancing Epoch - Species");
+        println!("Advancing Epoch - Species");
         for species in &mut self.species
         {
             species.advance_epoch();
         }
+        println!("Advancing Epoch - Done Advancing Species");
 
         let mut new_epoch_species = vec![];
         new_epoch_species.append(&mut self.species);
@@ -314,25 +404,12 @@ impl SimulationEpoch
         // TODO: Advance the Environment's epoch and copy it over
         let mut new_epoch = SimulationEpoch::new_restartable(self.environment.advance_epoch(), self.max_steps, self.restarts);
 
-
-        // Calculate Proportions of the species' fitness
-        //
-        let total_species_scores = self.species.iter().fold( 0.0, | mut accum, ref species |
-        {
-            accum += species.get_accum_score();
-            accum
-        }); 
-
-
-        // Proportions
-        new_epoch.proportions = self.species.iter().map( |ref species|  species.get_accum_score() / total_species_scores as f32 ).collect();
-
-        debug!("Advancing Epoch - Reinserting Species");
+        println!("Advancing Epoch - Reinserting Species");
         for n_s in new_epoch_species
         {
             new_epoch.add_species(n_s);
         }
-        debug!("Advancing Epoch - Done Reinserting Species");
+        println!("Advancing Epoch - Done Reinserting Species");
 
         new_epoch
     }
@@ -403,7 +480,7 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.act_phase(substep, &mut self.environment.physical_world);
+                polymini.act_phase(substep, &mut self.environment.physical_world, &mut self.environment.thermal_world, &mut self.environment.ph_world);
             }
         }
     }
@@ -420,7 +497,13 @@ impl SimulationEpoch
             for i in 0..generation.size()
             {
                 let mut polymini = generation.get_individual_mut(i);
-                polymini.consequence_physical(&self.environment.physical_world, substep);
+                polymini.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, substep);
+
+                if polymini.get_hp() <= 0 && polymini.is_alive()
+                {
+                    polymini.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
+                    self.environment.remove_individual(polymini);
+                }
             }
         }
         // After Physics is updated, each Polymini has data like
@@ -437,16 +520,98 @@ impl SimulationEpoch
     {
         let mut sp = SensoryPayload::new();
         // Fill the basic sensors
-        sp.insert(SensorTag::PositionX, perspective.pos.0 / self.environment.dimensions.0);
-        sp.insert(SensorTag::PositionY, perspective.pos.1 / self.environment.dimensions.1);
+        sp.insert(SensorTag::PositionX, perspective.pos.0);
+        sp.insert(SensorTag::PositionY, perspective.pos.1);
 
         sp.insert(SensorTag::LastMoveSucceded, if perspective.last_move_succeeded { 1.0 } else { 0.0 });
 
         sp.insert(SensorTag::Orientation, perspective.orientation.to_float());
 
+        sp.insert(SensorTag::TimeGlobal,  (self.steps as f32 / (self.max_steps * self.substeps) as f32));
+        sp.insert(SensorTag::TimeSubStep, (self.steps % self.substeps) as f32 / self.substeps as f32);
+
         // Go through the environment and Polyminis filling up
         // the sensory payload
         sp
+    }
+
+    pub fn solo_run(&mut self, envs: &Vec<(Environment, PGAConfig, Box<PlacementFunction>)>)
+    {
+        let original_env = self.environment.clone();
+        let mut random_ctx = PolyminiRandomCtx::from_seed([3,1,4,3], "Solo Run".to_owned());
+        for &(ref e, ref cfg, ref p_func) in envs
+        {
+            self.environment = e.clone();
+            for s in 0..self.species.len()
+            {
+                // This is not optional, so enforce it
+                let mut new_cfg = cfg.clone();
+                new_cfg.accumulates_over = true;
+                self.species[s].set_ga_config(new_cfg);
+                for i in 0..self.species[s].get_generation().size()
+                {
+                    // Reset the World 
+                    self.environment = self.environment.restart();
+
+                    // Add Polymini to the World
+                    let added_to_env;
+                    {
+                        let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                        polymini.restart(&mut random_ctx, &(**p_func));
+                        added_to_env = self.environment.add_individual_force_pos(polymini);
+                        if (!added_to_env)
+                        {
+                            polymini.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
+                            continue
+                        }
+                        debug!("Simulation::SoloRun{} Added polymini with id {} - {}", line!(), polymini.get_id(), added_to_env);
+                    }
+
+                    'steps: for step in 0..self.max_steps
+                    {
+                        'sub_steps: for ss in 0..self.substeps
+                        {
+                            self.steps = step * self.substeps + ss;
+                            let perspective;
+                            {
+                                let polymini = self.species[s].get_generation().get_individual(i);
+                                perspective = polymini.get_perspective();
+                            }
+                
+                            let sensed = self.sense_for(&perspective);
+                            let mut p = self.species[s].get_generation_mut().get_individual_mut(i);
+                            p.sense_phase(&sensed);
+                            p.think_phase();
+                            p.act_phase(ss, &mut self.environment.physical_world, &mut self.environment.thermal_world, &mut self.environment.ph_world);
+                            self.environment.physical_world.step();
+                            self.environment.thermal_world.step();
+                            self.environment.ph_world.step();
+                            p.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, ss);
+
+                            if p.get_hp() <= 0
+                            {
+                                p.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
+                                self.environment.remove_individual(p);
+                                break 'steps;
+                            }
+                        }
+                    }
+
+                    // Remove Polymini from the World
+                    {
+                        let polymini = self.species[s].get_generation_mut().get_individual_mut(i);
+                        if polymini.is_alive()
+                        {
+                            self.environment.remove_individual(polymini);
+                        }
+                    }
+                }
+
+                self.species[s].evaluate();
+            }
+        }
+        self.update_species_percentage();
+        self.environment = original_env;
     }
 }
 
@@ -498,6 +663,7 @@ mod test
 
     use ::control::*;
     use ::environment::*;
+    use ::evaluation::*;
     use ::genetics::*;
     use ::morphology::*;
     use ::physics::*;
@@ -562,7 +728,7 @@ mod test
         let p1 = Polymini::new(Morphology::new(&chromosomes, &TranslationTable::new()));
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1]));
-        s.add_object(WorldObject::new_static_object((10.0, 2.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((10.0, 2.0), (1, 1), false));
         for _ in 0..10 
         {
             s.step();
@@ -594,7 +760,7 @@ mod test
         println!(">> {:?}", p2.get_physics().get_pos());
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
         for _ in 0..10 
         {
             s.step();
@@ -620,7 +786,7 @@ mod test
 
         let mut s = SimulationEpoch::new();
         s.add_species(Species::new(vec![p1, p2]));
-        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1)));
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
 
         let mut ser_ctx = SerializationCtx::new_from_flags(PolyminiSerializationFlags::PM_SF_DB);
         let json_1 = s.serialize(&mut ser_ctx);
@@ -637,11 +803,50 @@ mod test
         let json_2 = s_prime.serialize(&mut ser_ctx);
 
         assert_eq!(json_2.pretty().to_string(), json_1.pretty().to_string());
-
-
-
     }
 
+    #[test]
+    fn test_solo_run()
+    {
+        let _ = env_logger::init();
+        let chromosomes = vec![[0, 0x09, 0x6A, 0xAD],
+                               [0, 0x0B, 0xBE, 0xDA],
+                               [0,    0, 0xBE, 0xEF],
+                               [0,    0, 0xDB, 0xAD]];
+
+        let chromosomes2 = vec![[0, 0x09, 0x6A, 0xAD],
+                                [0, 0x0B, 0xBE, 0xDA],
+                                [0,    0, 0xBE, 0xEF],
+                                [0,    0, 0xDB, 0xAD]];
+
+        let p1 = Polymini::new_at((21.0, 20.0), Morphology::new(&chromosomes, &TranslationTable::new()));
+        let p2 = Polymini::new_at((17.0, 20.0), Morphology::new(&chromosomes2, &TranslationTable::new()));
+
+        let mut s = SimulationEpoch::new();
+        let evaluators = vec![FitnessEvaluator::PositionsVisited { weight: 1.0 }];
+        let new_config = PGAConfig { population_size: 5,
+                                     percentage_elitism: 0.2, percentage_mutation: 0.1, fitness_evaluators: evaluators, accumulates_over: false,
+                                     genome_size: 8 };
+
+        let mut sp = Species::new(vec![p1, p2]);
+        sp.set_ga_config(new_config.clone());
+
+        s.add_species(sp);
+        s.add_object(WorldObject::new_static_object((20.0, 22.0), (1, 1), false));
+        s.solo_run(&vec![(Environment::new(1, vec![]), new_config.clone(),
+                          Box::new( | ctx: &mut PolyminiRandomCtx |
+                                    {
+                                        ( (ctx.gen_range(12.0, 18.0) as f32).floor(),
+                                        (ctx.gen_range(12.0, 18.0) as f32).floor())
+                                    }
+                                  )
+                          )]);
+        s.evaluate_species();
+    }
+
+
+
+// TEST CASE for a bug where species was being fed as None
     #[ignore]
     #[test]
     fn test_serialize_bug_none_species()
