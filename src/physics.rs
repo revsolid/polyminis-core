@@ -454,7 +454,7 @@ impl Physics
         }
         else
         {
-            false 
+            self.move_succeded
         };
 
         // Set our new initial position and reset step variables

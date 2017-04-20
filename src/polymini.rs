@@ -32,8 +32,8 @@ impl Serializable for EvaluationStats
 
 pub struct Stats
 {
-    max_hp: i32,
-    current_hp: i32,
+    max_hp: f32,
+    current_hp: f32,
     max_energy: i32,
     current_energy: i32,
     speed: usize,
@@ -41,7 +41,7 @@ pub struct Stats
     //TODO: combat_stats: CombatStatistics
     eval_stats: EvaluationStats,
 }
-const BASE_LINE_TMP: (f32, f32) = (0.0, 1.0);
+const BASE_LINE_TMP: (f32, f32) = (0.4, 0.7);
 const BASE_LINE_PH:  (f32, f32) = (0.0, 1.0);
 impl Stats
 {
@@ -49,7 +49,7 @@ impl Stats
     {
         let sp = Stats::calculate_speed_from(morph);
         let size = Stats::calculate_size_from(morph);
-        let hp = (size / 2) as i32;
+        let hp = size as f32 / 2.0;
         let nrg = Stats::calculate_energy_from(morph);
         Stats { max_hp: hp, current_hp: hp, max_energy: nrg, current_energy: nrg,
                 speed: sp, total_cells: size, eval_stats: EvaluationStats::new() }
@@ -124,6 +124,7 @@ impl Serializable for Stats
     {
         let mut json_obj = pmJsonObject::new();
         json_obj.insert("HP".to_owned(), self.max_hp.to_json());
+        json_obj.insert("CurrentHP".to_owned(), self.current_hp.to_json());
         json_obj.insert("Energy".to_owned(), self.max_energy.to_json());
         json_obj.insert("Speed".to_owned(), (self.speed + 1).to_json());
         json_obj.insert("Size".to_owned(), self.total_cells.to_json());
@@ -266,7 +267,8 @@ impl Polymini
         Perspective::new(self.uuid,
                          self.physics.get_normalized_pos(),
                          self.physics.get_orientation(),
-                         self.physics.get_move_succeded())
+                         self.physics.get_move_succeded(),
+                         self.thermo.current_temperature())
     }
     pub fn sense_phase(&mut self, sp: &SensoryPayload)
     {
@@ -357,18 +359,17 @@ impl Polymini
         }
 
         self.thermo.update_state(tworld);
-
         if !self.thermo.inside_range()
         {
             // NOTE RULES
-            self.stats.current_hp -= 1; // Scale with difference maybe ?
+            self.stats.current_hp -= (10.0 * self.thermo.delta_from_range().abs());
         }
 
         self.ph.update_state(phworld);
         if !self.ph.inside_range()
         {
             // NOTE RULES
-            self.stats.current_hp -= 1; // Scale with difference maybe ?
+            self.stats.current_hp -= 1.0; // Scale with difference maybe ?
         }
     }
 
@@ -407,7 +408,7 @@ impl Polymini
         &mut self.thermo
     }
 
-    pub fn get_hp(&self) -> i32
+    pub fn get_hp(&self) -> f32
     {
         self.stats.current_hp
     }
@@ -459,7 +460,8 @@ impl Serializable for Polymini
 
         json_obj.insert("Control".to_owned(), self.get_control().serialize(ctx));
 
-        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+        if !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB) ||
+            ctx.has_flag(PolyminiSerializationFlags::PM_SF_DEBUG)
         {
             json_obj.insert("Physics".to_owned(), self.get_physics().serialize(ctx));
             json_obj.insert("Thermo".to_owned(),  self.get_thermo().serialize(ctx));

@@ -8,26 +8,36 @@ pub enum Action
 {
     NoAction,
     MoveAction(MoveAction),
+    ThermalAction(ThermalAction),
+    PhAction(PhAction),
 }
 
 impl ToJson for Action
 {
     fn to_json(&self) -> Json 
     {
+        let mut json_obj = pmJsonObject::new();
         match *self
         {
             Action::NoAction =>
             {
-                Json::Object(pmJsonObject::new())
+                //
             },
             Action::MoveAction(MoveAction::Move(d, i, _)) =>
             {
-                let mut json_obj = pmJsonObject::new();
-                json_obj.insert("direction".to_string(), d.to_json());
-                json_obj.insert("impulse".to_string(), i.to_json());
-                Json::Object(json_obj)
-            }
+                json_obj.insert("direction".to_owned(), d.to_json());
+                json_obj.insert("impulse".to_owned(), i.to_json());
+            },
+            Action::ThermalAction(ThermalAction::Change(d)) =>
+            {
+                json_obj.insert("delta".to_owned(), d.to_json());
+            },
+            Action::PhAction(PhAction::Change(d)) =>
+            {
+                json_obj.insert("delta".to_owned(), d.to_json());
+            },
         }
+        Json::Object(json_obj)
     }
 }
 
@@ -37,6 +47,19 @@ pub enum MoveAction
     Move(Direction, f32, f32),
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum ThermalAction
+{
+    Change(f32), 
+}
+
+
+#[derive(Clone, Copy, Debug)]
+pub enum PhAction
+{
+    Change(f32), 
+}
+
 pub type ActionList = Vec<Action>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -44,6 +67,8 @@ pub enum ActuatorTag
 {
     MoveHorizontal,
     MoveVertical,
+    Thermo,
+    Ph,
 }
 impl ActuatorTag
 {
@@ -70,6 +95,14 @@ impl ActuatorTag
                 let torque = coord.0 as f32 * stimulus;
                 Action::MoveAction(MoveAction::Move(Direction::VERTICAL, stimulus, torque))
             },
+            ActuatorTag::Thermo =>
+            {
+                Action::ThermalAction(ThermalAction::Change(stimulus))
+            }
+            ActuatorTag::Ph =>
+            {
+                Action::PhAction(PhAction::Change(stimulus))
+            }
         }
     }
 }
@@ -93,6 +126,8 @@ impl Deserializable for ActuatorTag
                 {
                     "hormov" => { to_ret = ActuatorTag::MoveHorizontal; }, 
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
+                    "thermo" => { to_ret = ActuatorTag::Thermo; }, 
+                    "ph"     => { to_ret = ActuatorTag::Ph; }, 
                     _ =>
                     {
                         return None;

@@ -294,7 +294,7 @@ impl SimulationEpoch
                 let start_pos = ind.get_physics().get_starting_pos();
                 if start_pos.0 < 0.0 || start_pos.1 < 0.0 || start_pos.0 >= self.environment.dimensions.0 || start_pos.1 >= self.environment.dimensions.1
                 {
-                    ind.die(&DeathContext::new(DeathReason::Placement, 0, self.max_steps as u32));
+                    ind.die(&DeathContext::new(DeathReason::Placement, 0, (self.max_steps * self.substeps) as u32));
                 }
             }
         }
@@ -499,9 +499,9 @@ impl SimulationEpoch
                 let mut polymini = generation.get_individual_mut(i);
                 polymini.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, substep);
 
-                if polymini.get_hp() <= 0 && polymini.is_alive()
+                if polymini.get_hp() <= 0.0 && polymini.is_alive()
                 {
-                    polymini.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
+                    polymini.die(&DeathContext::new(DeathReason::HP, self.steps as u32, (self.max_steps * self.substeps) as u32));
                     self.environment.remove_individual(polymini);
                 }
             }
@@ -529,6 +529,8 @@ impl SimulationEpoch
 
         sp.insert(SensorTag::TimeGlobal,  (self.steps as f32 / (self.max_steps * self.substeps) as f32));
         sp.insert(SensorTag::TimeSubStep, (self.steps % self.substeps) as f32 / self.substeps as f32);
+
+        sp.insert(SensorTag::Thermo, perspective.temperature);
 
         // Go through the environment and Polyminis filling up
         // the sensory payload
@@ -588,7 +590,7 @@ impl SimulationEpoch
                             self.environment.ph_world.step();
                             p.consequence(&self.environment.physical_world, &self.environment.thermal_world, &self.environment.ph_world, ss);
 
-                            if p.get_hp() <= 0
+                            if p.get_hp() <= 0.0
                             {
                                 p.die(&DeathContext::new(DeathReason::HP, self.steps as u32, self.max_steps as u32));
                                 self.environment.remove_individual(p);

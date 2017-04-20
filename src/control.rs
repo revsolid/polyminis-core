@@ -21,14 +21,15 @@ pub struct Perspective
     pub pos: (f32, f32),
     pub orientation: Direction,
     pub last_move_succeeded: bool, 
+    pub temperature: f32,
 }
 impl Perspective
 {
     pub fn new(id: usize, pos: (f32, f32),
-               orientation: Direction, move_succeded: bool) -> Perspective
+               orientation: Direction, move_succeded: bool, temperature: f32) -> Perspective
     {
         Perspective { id: id, pos: pos, orientation: orientation,
-                      last_move_succeeded: move_succeded }
+                      last_move_succeeded: move_succeded, temperature: temperature }
     }
 }
 
@@ -228,7 +229,7 @@ impl Control
         // Make sure we pick the smaller size and then the bigger and that we at least have a
         // correct range
         let s_size = max(min(self.hidden_layer_size, other.hidden_layer_size) - 1, 1);
-        let b_size = min(max(self.hidden_layer_size, other.hidden_layer_size) + 1, s_size + 1);
+        let b_size = max(self.hidden_layer_size, other.hidden_layer_size) + 1;
         let hid_len = rand_ctx.gen_range(s_size, b_size);
 
         let new_in_size = Sensor::get_total_cardinality(&new_sensor_list);

@@ -22,6 +22,13 @@ pub enum SensorTag
     // -- FoodSources
     GSensor,
 
+    // Temperature
+    // --
+    Thermo,
+
+    // Ph
+    // --
+    Ph,
 }
 impl SensorTag
 {
@@ -51,6 +58,7 @@ impl Deserializable for SensorTag
             {
                 match json_string.to_lowercase().as_str()
                 {
+                    //
 
                     "positionx"        => { to_ret = SensorTag::PositionX },
                     "positiony"        => { to_ret = SensorTag::PositionY },
@@ -59,6 +67,8 @@ impl Deserializable for SensorTag
                     "gsensor"          => { to_ret = SensorTag::GSensor },
                     "timeglobal"       => { to_ret = SensorTag::TimeGlobal },
                     "timesubstep"      => { to_ret = SensorTag::TimeSubStep },
+                    "thermo"           => { to_ret = SensorTag::Thermo },
+                    "ph"               => { to_ret = SensorTag::Ph },
 
                     //Default
                     _                  => { return None },

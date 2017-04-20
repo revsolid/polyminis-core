@@ -35,6 +35,14 @@ pub struct WorldObject
 }
 impl WorldObject
 {
+    pub fn new_from_params(params :Vec<WorldObjectParams>) -> WorldObject
+    {
+        WorldObject
+        {
+            uuid: PolyminiUUIDCtx::next(),
+            params: params,
+        }
+    }
     pub fn new_static_object( position: (f32, f32), dimensions: (u8, u8), permanent: bool) -> WorldObject
     {
         let mut params = vec![ WorldObjectParams::PhysicsWorldParams { position: position, dimensions: dimensions } ];
@@ -43,12 +51,7 @@ impl WorldObject
         {
             params.push(WorldObjectParams::PermanentWorldParams);
         }
-
-        WorldObject
-        {
-            uuid: PolyminiUUIDCtx::next(),
-            params: params,
-        }
+        WorldObject::new_from_params(params)
     }
 
     pub fn new_border_object(position: (f32, f32), dimensions: (u8, u8)) -> WorldObject
@@ -84,17 +87,21 @@ impl Serializable for WorldObject
                     json_obj.insert("Position".to_owned(), Vector2::new(p.0, p.1).serialize(ctx));
                     json_obj.insert("Dimensions".to_owned(), Vector2::new(d.0 as f32, d.1 as f32).serialize(ctx));
                 },
-                &WorldObjectParams::ThermoWorldParams { current_temperature: _ } =>
+                &WorldObjectParams::ThermoWorldParams { current_temperature: ct } =>
                 {
+                    json_obj.insert("Temperature".to_owned(), ct.to_json()); 
                 },
-                &WorldObjectParams::PhWorldParams { current_ph: _ } =>
+                &WorldObjectParams::PhWorldParams { current_ph: cp } =>
                 {
+                    json_obj.insert("Ph".to_owned(), cp.to_json());
                 },
                 &WorldObjectParams::PermanentWorldParams =>
                 {
+                    json_obj.insert("Permanent".to_owned(), true.to_json());
                 },
                 &WorldObjectParams::BorderWorldParams =>
                 {
+                    json_obj.insert("IsBorder".to_owned(), true.to_json());
                 },
                 _ =>
                 {
@@ -136,7 +143,7 @@ impl Deserializable for WorldObject
                                  });
                 }
 
-                if JsonUtils::verify_has_fields(json_obj, &vec!["Position".to_owned(), "Dimensions".to_owned()])
+                if JsonUtils::verify_has_fields(json_obj, &vec!["Temperature".to_owned()])
                 {
                 }
 
@@ -455,11 +462,11 @@ impl Environment
             {
                 WorldObjectParams::ThermoWorldParams { current_temperature: ct } => 
                 {
-                    self.thermal_world.add_object(world_object.uuid, pos, ct, 1.0);
+                    self.thermal_world.add_object(world_object.uuid, pos, ct, 5.0);
                 },
                 WorldObjectParams::PhWorldParams { current_ph: cph } => 
                 {
-                    self.thermal_world.add_object(world_object.uuid, pos, cph, 1.0);
+                    self.ph_world.add_object(world_object.uuid, pos, cph, 5.0);
                 },
                 _ => {},
             }
@@ -509,7 +516,6 @@ impl Serializable for Environment
         {
         }
 
-        if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
         {
             //
             let sensor_json_arr: pmJsonArray = self.default_sensors.iter().map(|s| { s.tag.serialize(ctx) }).collect();
@@ -526,14 +532,28 @@ impl Serializable for Environment
 
             //
             let mut perm_obj_json_arr = pmJsonArray::new();
+            let mut all_obj_json_arr = pmJsonArray::new();
             for obj in &self.objects
             {
-                if self.permanent_objects.contains(&obj.uuid)
+                if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB) && self.permanent_objects.contains(&obj.uuid)
                 {
                     perm_obj_json_arr.push(obj.serialize(ctx));
                 }
+
+                if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) && !ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+                {
+                    all_obj_json_arr.push(obj.serialize(ctx)); 
+                }
             }
-            json_obj.insert("PermanentObjects".to_owned(), Json::Array(perm_obj_json_arr));
+
+            if ctx.has_flag(PolyminiSerializationFlags::PM_SF_DB)
+            {
+                json_obj.insert("PermanentObjects".to_owned(), Json::Array(perm_obj_json_arr));
+            }
+            else
+            {
+                json_obj.insert("WorldObjects".to_owned(), Json::Array(all_obj_json_arr));
+            }
         }
 
         if ctx.has_flag(PolyminiSerializationFlags::PM_SF_STATIC) &&
@@ -541,6 +561,9 @@ impl Serializable for Environment
         {
             //
             json_obj.insert("PhysicsWorld".to_owned(), self.physical_world.serialize(ctx));
+
+            //
+            json_obj.insert("ThermalWorld".to_owned(), self.thermal_world.serialize(ctx));
         }
         Json::Object(json_obj)
     }
