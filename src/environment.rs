@@ -2,12 +2,14 @@ use ::control::*;
 use ::ph::*;
 use ::physics::*;
 use ::polymini::*;
+use ::random::*;
 use ::serialization::*;
 use ::species::*;
 use ::thermal::*;
 use ::uuid::*;
 
 use std::collections::HashSet;
+use std::cmp::max;
 
 const KENVIRONMENT_DIMENSIONS: (f32, f32) = (50.0, 50.0);
 
@@ -187,32 +189,106 @@ impl WorldBuilder
 {
     // Json goes in -
     // WorldObjects come out
-    fn populate_world(json_world: &Json) -> Vec<WorldObject>
+    fn populate_world(dims: (f32, f32),
+                      temp_range: (f32, f32),
+                      ph_range: (f32, f32),
+                      density: f32,
+                      add_border: bool,
+                      rand_ctx: &mut PolyminiRandomCtx) -> Vec<WorldObject>
     {
-        match *json_world
+        let mut objects = vec![];
+        // Temperature
+        let temp_min = temp_range.0;
+        let temp_max = temp_range.1;
+        
+        // Ph
+        let ph_min = ph_range.0;
+        let ph_max = ph_range.1;
+        
+        // Density - How many dumb rocks, it's a percentage of total area (Max = 25%)
+        let rho = density / 100.0;
+        let mut obstacle_area_left = (rho * dims.0 * dims.1) as i32;
+        
+        // Surround it with walls? (on by default)
+        if add_border 
         {
-            Json::Object(ref world_config) => 
-            {
-                // Temperature
-                
-                // Ph
-                
-                // Density - How many dumb rocks
-                
-                // Surround it with walls? (on by default)
-                
-                // Material / Comp Information 
-                
-                // Budget for Generators 
-                vec![]
-            },
-            _ =>
-            {
-                // Is there a sensible default?
-                vec![]
-            }
+            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, 1)));
+            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (1, dims.1 as u8)));
+            objects.push(WorldObject::new_border_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8)));
+            objects.push(WorldObject::new_border_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1)));
+        }
+        
+        // Budget for Generators 
+        //
+        // The idea is to use simple 'Dice-like' algorithms 
+        //
+        // Obstacles -- TODO: Ideally the obstacles would also interact a bit with
+        // temperature and PH
+        while(obstacle_area_left > 0) 
+        {
+            // Create Obstacle and consume area left
+            let side_x = max(1, rand_ctx.gen_range(0, 4) + rand_ctx.gen_range(0, 4));
+            let side_y = max(1, rand_ctx.gen_range(0, 4) + rand_ctx.gen_range(0, 4));
+            let pos_x  = rand_ctx.gen_range(0.0, dims.0);
+            let pos_y  = rand_ctx.gen_range(0.0, dims.1);
+        
+            objects.push(WorldObject::new_static_object((pos_x, pos_y), (side_x, side_y), false));
+
+            obstacle_area_left -= (side_x * side_y) as i32;
         }
 
+
+        let calc_emmitter_v = |rand_ctx: &mut PolyminiRandomCtx,
+                               dims: (f32, f32), min_v: f32, max_v: f32| -> f32
+                               {
+                                  // The idea is to make emitters fall mostly in the midpoint between the average
+                                  // temperature (temp_mid_p) and the extremes (temp_min, temp_max).
+                                  // We use 2 "dice" so that 0+0 is very rare (basically making a useless emitter
+                                  // that drives temp to the average) and max_r + max_r is also rare (emitters
+                                  // pulling to extreme temperatures)
+                                  let value_delta_dir = if rand_ctx.test_value(0.5) { 1.0 } else { -1.0 } ;  
+
+                                  let value_mid_p = min_v +  (max_v - min_v) / 2.0; 
+
+                                  let range = ((max_v - value_mid_p) / 2.0).max(0.001);
+                                  let emmitter_v = value_mid_p + (value_delta_dir * (rand_ctx.gen_range(0.0, range * 2.0)));
+                                  debug!("PopulateWorld::CreateEmmitter Inputs:\n  Dims {:?}\n TempRange: {:?}\n PhRange: {:?}", dims, temp_range, ph_range);
+                                  debug!("PopulateWorld::CreateEmmitter Value Mid Point: {:?} Value Delta Dir: {:?} Range: {:?}", value_mid_p, value_delta_dir, range); 
+                                  debug!("PopulateWorld::CreateEmmitter Result: {:?}", emmitter_v); 
+                                  emmitter_v
+                               };
+        
+        // For now use a fixed number for Temp and PH Emitters 
+        let num_emmitters = 4;
+        for i in 0..num_emmitters
+        {
+
+            let temp_intensity = max(1, rand_ctx.gen_range(0, 3) + rand_ctx.gen_range(0, 3)); 
+            let em_temp = calc_emmitter_v(rand_ctx, dims, temp_min, temp_max);
+            let temp_pos_x  = rand_ctx.gen_range(0.0, dims.0);
+            let temp_pos_y  = rand_ctx.gen_range(0.0, dims.1);
+            objects.push(
+                WorldObject::new_from_params(
+                    vec![
+                        WorldObjectParams::PhysicsWorldParams { position: (temp_pos_x, temp_pos_y), dimensions: (0, 0) },
+                        WorldObjectParams::ThermoWorldParams { current_temperature: em_temp }
+                    ]
+                ));
+
+            let ph_pos_x  = rand_ctx.gen_range(0.0, dims.0);
+            let ph_pos_y  = rand_ctx.gen_range(0.0, dims.1);
+            let ph_intensity = max(1, rand_ctx.gen_range(0, 3) + rand_ctx.gen_range(0, 3)); 
+            let em_ph = calc_emmitter_v(rand_ctx, dims, ph_min, ph_max);
+            objects.push(
+                WorldObject::new_from_params(
+                    vec![
+                        WorldObjectParams::PhysicsWorldParams { position: (ph_pos_x, ph_pos_y), dimensions: (0, 0) },
+                        WorldObjectParams::PhWorldParams { current_ph: em_ph}
+                    ]
+                ));
+        }
+
+        objects
     }
 }
 
@@ -261,7 +337,7 @@ impl Environment
         env
     }
 
-    pub fn new_from_json(json: &Json) -> Option<Environment>
+    pub fn new_from_json(json: &Json, rand_ctx: &mut PolyminiRandomCtx) -> Option<Environment>
     {
         match *json
         {
@@ -280,13 +356,15 @@ impl Environment
                 };
 
 
+                let mut temp_max = 1.0;
+                let mut temp_min = 0.0;
                 let tworld = match json_obj.get("Temperature")
                 {
                     Some(&Json::Object(ref temp_obj)) =>
                     {
-                        let max = temp_obj.get("Max").unwrap().as_f64().unwrap();
-                        let min = temp_obj.get("Min").unwrap().as_f64().unwrap();
-                        ThermoWorld::new_with_dimensions(dims, ((min+max)/2.0) as f32)
+                        temp_max = temp_obj.get("Max").unwrap().as_f64().unwrap() as f32;
+                        temp_min = temp_obj.get("Min").unwrap().as_f64().unwrap() as f32;
+                        ThermoWorld::new_with_dimensions(dims, (temp_min+temp_max)/2.0)
                     },
                     _ =>
                     {
@@ -295,13 +373,15 @@ impl Environment
                 };
 
 
+                let mut ph_max = 1.0;
+                let mut ph_min = 0.0;
                 let phworld = match json_obj.get("Ph")
                 {
                     Some(&Json::Object(ref temp_obj)) =>
                     {
-                        let max = temp_obj.get("Max").unwrap().as_f64().unwrap();
-                        let min = temp_obj.get("Min").unwrap().as_f64().unwrap();
-                        PhWorld::new_with_dimensions(dims, ((min+max)/2.0) as f32)
+                        ph_max = temp_obj.get("Max").unwrap().as_f64().unwrap() as f32;
+                        ph_min = temp_obj.get("Min").unwrap().as_f64().unwrap() as f32;
+                        PhWorld::new_with_dimensions(dims, (ph_min+ph_max)/2.0)
                     },
                     _ =>
                     {
@@ -313,7 +393,7 @@ impl Environment
                 {
                     Some(&Json::F64(rho)) =>
                     {
-                        rho
+                        rho as f32
                     },
                     _ =>
                     {
@@ -326,7 +406,7 @@ impl Environment
                               physical_world: PhysicsWorld::new_with_dimensions(dims),
                               thermal_world: tworld,
                               ph_world:  phworld,
-                              density: density as f32,
+                              density: density,
                               default_sensors: default_sensors,
                               species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
                               objects: vec![],
@@ -359,25 +439,23 @@ impl Environment
                 }
 
 
-                if json_obj.get("AddBorder").unwrap_or(&Json::Null).as_boolean().unwrap_or(false)
-                {
+                let add_border = json_obj.get("AddBorder").unwrap_or(&Json::Boolean(false)).as_boolean().unwrap();
+                /*{
                     env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, 1)));
                     env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (1, dims.1 as u8)));
                     env.add_object(WorldObject::new_border_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8)));
                     env.add_object(WorldObject::new_border_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1)));
-                }
+                }*/
 
 
+                // Populate World
+                if json_obj.get("UseWorldBuilder").unwrap_or(&Json::Boolean(true)).as_boolean().unwrap()
                 {
-                    let cfg = json_obj.get("WorldConfig");
-                    if cfg.is_some() 
+                    let mut objs = WorldBuilder::populate_world(dims, (temp_min, temp_max), (ph_min, ph_max), density, add_border, rand_ctx);
+                    let l = objs.len();
+                    for o in objs.drain(0..l)
                     {
-                        let mut objs = WorldBuilder::populate_world(cfg.unwrap());
-                        let l = objs.len();
-                        for o in objs.drain(0..l)
-                        {
-                            env.add_object(o);
-                        }
+                        env.add_object(o);
                     }
                 }
                 
@@ -564,6 +642,9 @@ impl Serializable for Environment
 
             //
             json_obj.insert("ThermalWorld".to_owned(), self.thermal_world.serialize(ctx));
+
+            //
+            json_obj.insert("PhWorld".to_owned(), self.ph_world.serialize(ctx));
         }
         Json::Object(json_obj)
     }

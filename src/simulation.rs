@@ -213,8 +213,11 @@ impl SimulationEpoch
                     error!("Dumping JSON, \n{}", json.to_string());
                     return None
                 }
-                // env
-                let env = Environment::new_from_json(json_obj.get("Environment").unwrap()).unwrap();
+                // env - TODO: Random Context seed
+                let mut rand_ctx = PolyminiRandomCtx::from_seed([PolyminiUUIDCtx::next() as u32,
+                                                                 PolyminiUUIDCtx::next() as u32,
+                                                                 1, 1], "Environment Creation".to_owned()); 
+                let env = Environment::new_from_json(json_obj.get("Environment").unwrap(), &mut rand_ctx).unwrap();
 
                 let mut species = vec![];
                 // NOTE: species are added afterwards by the owning simulation 
