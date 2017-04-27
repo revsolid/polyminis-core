@@ -4,6 +4,7 @@ use ::serialization::*;
 use ::uuid::PUUID;
 
 use std::collections::HashMap;
+use std::cmp;
 use std::fmt;
 use std::f32;
 
@@ -219,7 +220,12 @@ impl ThermoWorld
             if obj.is_individual         
             {
                 let gcoords = ThermoWorld::coord_to_grid_position(obj.position, self.dimensions, self.thermo_grid.len(), self.thermo_grid[0].len());
-                let mut grid_v = self.thermo_grid[gcoords.0][gcoords.1];
+
+                let cx = cmp::min(cmp::max(gcoords.0, 0), x_len -1);
+                let cy = cmp::min(cmp::max(gcoords.1, 0), y_len -1);
+
+
+                let mut grid_v = self.thermo_grid[cx][cy];
 
                 let d = grid_v - obj.current_temperature;
                 debug!("Thermo Step: grid_v = {}", grid_v);
