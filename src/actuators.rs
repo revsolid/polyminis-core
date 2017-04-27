@@ -126,8 +126,9 @@ impl Deserializable for ActuatorTag
                 {
                     "hormov" => { to_ret = ActuatorTag::MoveHorizontal; }, 
                     "vermov" => { to_ret = ActuatorTag::MoveVertical; }, 
-                    "thermo" => { to_ret = ActuatorTag::Thermo; }, 
                     "ph"     => { to_ret = ActuatorTag::Ph; }, 
+                    "coldtempreg" => { to_ret = ActuatorTag::Thermo; }, 
+                    "hottempreg"  => { to_ret = ActuatorTag::Thermo; }, 
                     _ =>
                     {
                         return None;

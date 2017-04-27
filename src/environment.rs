@@ -194,6 +194,7 @@ impl WorldBuilder
                       ph_range: (f32, f32),
                       density: f32,
                       add_border: bool,
+                      border_margin: f32,
                       rand_ctx: &mut PolyminiRandomCtx) -> Vec<WorldObject>
     {
         let mut objects = vec![];
@@ -212,10 +213,11 @@ impl WorldBuilder
         // Surround it with walls? (on by default)
         if add_border 
         {
-            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, 1)));
-            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (1, dims.1 as u8)));
-            objects.push(WorldObject::new_border_object( (dims.0 - 1.0, 0.0),  (1, dims.1 as u8)));
-            objects.push(WorldObject::new_border_object( (0.0, dims.1 - 1.0),  (dims.0 as u8, 1)));
+            let ubm = border_margin as u8;
+            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, ubm + 1)));
+            objects.push(WorldObject::new_border_object( (0.0, 0.0),   (ubm + 1, dims.1 as u8)));
+            objects.push(WorldObject::new_border_object( (dims.0 - 1.0 - border_margin, 0.0 + border_margin),  (ubm + 1, dims.1 as u8)));
+            objects.push(WorldObject::new_border_object( (0.0 + border_margin, dims.1 - 1.0 - border_margin),  (dims.0 as u8, ubm + 1)));
         }
         
         // Budget for Generators 
@@ -308,9 +310,11 @@ pub struct Environment
 
     //
     pub objects: Vec<WorldObject>,
+    pub border_margin: f32,
 
     // 
     permanent_objects: HashSet<PUUID>,
+
 }
 impl Environment
 {
@@ -333,6 +337,7 @@ impl Environment
             species_slots: species_slots,
             objects: vec![],
             permanent_objects: HashSet::new(),
+            border_margin: 0.0,
         };
         env
     }
@@ -401,6 +406,7 @@ impl Environment
                     }
                 };
 
+                let margin = json_obj.get("BorderMargin").unwrap_or(&Json::F64(0.0)).as_f64().unwrap() as f32;
                 let mut env = Environment {
                               dimensions: dims,
                               physical_world: PhysicsWorld::new_with_dimensions(dims),
@@ -411,6 +417,7 @@ impl Environment
                               species_slots: json_obj.get("SpeciesSlots").unwrap().as_u64().unwrap() as usize,
                               objects: vec![],
                               permanent_objects: HashSet::new(),
+                              border_margin: margin
                             };
 
                 
@@ -449,9 +456,9 @@ impl Environment
 
 
                 // Populate World
-                if json_obj.get("UseWorldBuilder").unwrap_or(&Json::Boolean(true)).as_boolean().unwrap()
+                if json_obj.get("UseWorldBuilder").unwrap_or(&Json::Boolean(false)).as_boolean().unwrap()
                 {
-                    let mut objs = WorldBuilder::populate_world(dims, (temp_min, temp_max), (ph_min, ph_max), density, add_border, rand_ctx);
+                    let mut objs = WorldBuilder::populate_world(dims, (temp_min, temp_max), (ph_min, ph_max), density, add_border, margin, rand_ctx);
                     let l = objs.len();
                     for o in objs.drain(0..l)
                     {

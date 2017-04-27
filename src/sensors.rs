@@ -67,8 +67,8 @@ impl Deserializable for SensorTag
                     "gsensor"          => { to_ret = SensorTag::GSensor },
                     "timeglobal"       => { to_ret = SensorTag::TimeGlobal },
                     "timesubstep"      => { to_ret = SensorTag::TimeSubStep },
-                    "thermo"           => { to_ret = SensorTag::Thermo },
-                    "ph"               => { to_ret = SensorTag::Ph },
+                    "tempsensor"       => { to_ret = SensorTag::Thermo },
+                    "phsensor"         => { to_ret = SensorTag::Ph },
 
                     //Default
                     _                  => { return None },

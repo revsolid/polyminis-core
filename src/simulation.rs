@@ -110,11 +110,12 @@ impl Simulation
                             }
 
                             let dims = epoch.get_environment().dimensions.clone();
+                            let margin = epoch.get_environment().border_margin;
                             let s = Species::new_from_json(species_json, &epoch.get_environment().default_sensors,
                                                            Box::new( move | ctx: &mut PolyminiRandomCtx |
                                                            {
-                                                               ( (ctx.gen_range(0.0, dims.0) as f32).floor(),
-                                                                 (ctx.gen_range(0.0, dims.1) as f32).floor())
+                                                               ( (ctx.gen_range(margin, dims.0 - margin) as f32).floor(),
+                                                                 (ctx.gen_range(margin, dims.1 - margin) as f32).floor())
                                                            }), &master_translation_table, filter_func);
                             match s
                             {
