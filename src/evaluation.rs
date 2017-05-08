@@ -144,7 +144,7 @@ impl FitnessEvaluator
             },
             FitnessEvaluator::Alive { weight: w } =>
             {
-                let i = Instinct::Basic;
+                let i = Instinct::Hoarding;
                 let v = statistics.iter().fold(w,
 
                                                |mut accum, stat|
