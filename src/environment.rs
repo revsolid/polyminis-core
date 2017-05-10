@@ -446,7 +446,7 @@ impl Environment
                 }
 
 
-                let add_border = json_obj.get("AddBorder").unwrap_or(&Json::Boolean(false)).as_boolean().unwrap();
+                let add_border = json_obj.get("AddBorder").unwrap_or(&Json::Boolean(true)).as_boolean().unwrap();
                 /*{
                     env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (dims.0 as u8, 1)));
                     env.add_object(WorldObject::new_border_object( (0.0, 0.0),   (1, dims.1 as u8)));
